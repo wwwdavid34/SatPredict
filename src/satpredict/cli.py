@@ -4,7 +4,7 @@ import argparse
 from datetime import date
 from pprint import pprint
 
-from .engine import Predictor, PredictionRequest
+from .engine import Predictor, PredictionConfig, PredictionRequest
 from .models import Target
 from .sources import fetch_celestrak_group, load_tles_from_zip
 
@@ -18,6 +18,10 @@ def main() -> None:
     parser.add_argument("--group", type=str, default="stations", help="CelesTrak group")
     parser.add_argument("--zip", type=str, help="Path to TLE ZIP file")
     parser.add_argument("--index", type=int, default=0, help="Pick nth TLE from source")
+    parser.add_argument("--coarse-step-seconds", type=float, default=120.0)
+    parser.add_argument("--iteration-limit", type=int, default=1000)
+    parser.add_argument("--swath-km", type=float, default=3000.0)
+    parser.add_argument("--bearing-precision-deg", type=float, default=0.0001)
     args = parser.parse_args()
 
     if args.zip:
@@ -35,6 +39,12 @@ def main() -> None:
         target=Target(lat=args.lat, lon=args.lon, alt_m=0),
         start_date=date.fromisoformat(args.date),
         predict_days=args.days,
+        config=PredictionConfig(
+            coarse_step_seconds=args.coarse_step_seconds,
+            iteration_limit=args.iteration_limit,
+            swath_km=args.swath_km,
+            bearing_precision_deg=args.bearing_precision_deg,
+        ),
     )
 
     result = Predictor().run(req)

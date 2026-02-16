@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 import importlib.util
@@ -10,11 +10,20 @@ from .models import TLE, Target
 
 
 @dataclass(slots=True)
+class PredictionConfig:
+    coarse_step_seconds: float = 120.0
+    iteration_limit: int = 1000
+    swath_km: float = 3000.0
+    bearing_precision_deg: float = 0.0001
+
+
+@dataclass(slots=True)
 class PredictionRequest:
     tle: TLE
     target: Target
     start_date: date
     predict_days: int = 1
+    config: PredictionConfig = field(default_factory=PredictionConfig)
 
 
 class Predictor:
@@ -33,10 +42,18 @@ class Predictor:
             raise RuntimeError(f"Failed to load legacy module from {path}")
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
+        self._legacy_mod = mod
         return mod.SatPredict
 
     def run(self, request: PredictionRequest):
+        cfg = request.config
+        # Expose precision/runtime knobs without changing legacy defaults.
+        self._legacy_mod.tspanDef = float(cfg.coarse_step_seconds)
+        self._legacy_mod.iteLimitDef = int(cfg.iteration_limit)
+        self._legacy_mod.swath = float(cfg.swath_km)
+
         p = self._legacy_cls()
+        p.bearingPrecision = float(cfg.bearing_precision_deg)
         # Bypass legacy online TLE fetch path; inject satrec directly.
         p.tleL1 = request.tle.line1
         p.tleL2 = request.tle.line2

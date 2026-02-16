@@ -454,7 +454,7 @@ class SatPredict(object):
         visible         = 0
 
         #Start Propogation
-        bearingPrecision=0.0001
+        bearingPrecision=getattr(self, 'bearingPrecision', 0.0001)
 
         while (not(passedObs and visible and (math.fabs(bearingDiffPrev) < bearingPrecision)) 
                and not error):
