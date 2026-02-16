@@ -43,6 +43,7 @@ class Predictor:
         p.tleL1Input = None
         p.tleL2Input = None
         p.satrec = self._legacy_satrec(request.tle.line1, request.tle.line2)
+        p.get_satrec = lambda *args, **kwargs: p.satrec
 
         p.startDate = request.start_date.isoformat()
         p.predictDays = int(request.predict_days)
