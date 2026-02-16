@@ -15,6 +15,8 @@ class PredictionConfig:
     iteration_limit: int = 1000
     swath_km: float = 3000.0
     bearing_precision_deg: float = 0.0001
+    min_step_seconds: float = 0.005
+    max_stall_iterations: int = 30
 
 
 @dataclass(slots=True)
@@ -54,6 +56,8 @@ class Predictor:
 
         p = self._legacy_cls()
         p.bearingPrecision = float(cfg.bearing_precision_deg)
+        p.minStepSeconds = float(cfg.min_step_seconds)
+        p.maxStallIterations = int(cfg.max_stall_iterations)
         # Bypass legacy online TLE fetch path; inject satrec directly.
         p.tleL1 = request.tle.line1
         p.tleL2 = request.tle.line2

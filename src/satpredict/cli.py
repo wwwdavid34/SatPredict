@@ -22,6 +22,8 @@ def main() -> None:
     parser.add_argument("--iteration-limit", type=int, default=1000)
     parser.add_argument("--swath-km", type=float, default=3000.0)
     parser.add_argument("--bearing-precision-deg", type=float, default=0.0001)
+    parser.add_argument("--min-step-seconds", type=float, default=0.005)
+    parser.add_argument("--max-stall-iterations", type=int, default=30)
     args = parser.parse_args()
 
     if args.zip:
@@ -44,6 +46,8 @@ def main() -> None:
             iteration_limit=args.iteration_limit,
             swath_km=args.swath_km,
             bearing_precision_deg=args.bearing_precision_deg,
+            min_step_seconds=args.min_step_seconds,
+            max_stall_iterations=args.max_stall_iterations,
         ),
     )
 

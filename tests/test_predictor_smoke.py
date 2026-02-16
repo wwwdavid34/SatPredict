@@ -31,5 +31,6 @@ def test_predictor_runs_with_local_tle_and_config():
     assert len(out) >= 1
 
     first = out[sorted(out.keys(), key=int)[0]]
-    for k in ("timeEndUTC", "satLat", "satLon", "distance", "scanAngle"):
+    for k in ("timeEndUTC", "satLat", "satLon", "distance", "scanAngle", "exitReason"):
         assert k in first
+    assert first["exitReason"] in {"converged", "unknown", "max_iter", "nan_state", "stalled"}

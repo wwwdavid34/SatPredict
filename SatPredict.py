@@ -348,6 +348,7 @@ class SatPredict(object):
                  'timeEndUTC': eu_str, 'timeEndLOC': el_str,
                  'timeEndUTC_J': out['timeEndUTC'], 'timeEndLOC_J': out['timeEndLOC'],
                  'timeIniUTC_J': out['timeIniUTC'],
+                 'exitReason': out.get('exitReason', 'unknown'),
                  'dayNight': data_line[-1]}
             if cnt == 1:
                 result = {str(cnt): a}
@@ -455,6 +456,11 @@ class SatPredict(object):
 
         #Start Propogation
         bearingPrecision=getattr(self, 'bearingPrecision', 0.0001)
+        minStepSeconds=getattr(self, 'minStepSeconds', 0.005)
+        maxStallIterations=getattr(self, 'maxStallIterations', 30)
+        exitReason='unknown'
+        stallCount=0
+        prevEpoch=actualEpoch
 
         while (not(passedObs and visible and (math.fabs(bearingDiffPrev) < bearingPrecision)) 
                and not error):
@@ -465,6 +471,7 @@ class SatPredict(object):
                 if self.verbose:
                     print('Exceed iteration limit.')
                 error=1
+                exitReason='max_iter'
 
             dtMinutes=(actualEpoch - satrec.jdsatepoch)*mpd
             r,v=sgp4(satrec,dtMinutes)
@@ -487,6 +494,11 @@ class SatPredict(object):
                 bearing=0-bearingRaw
 
             bearingDiff=math.fabs(bearing)-90
+
+            if (not math.isfinite(bearingDiff)) or (not math.isfinite(satGeo['x'])) or (not math.isfinite(satGeo['y'])):
+                error=1
+                exitReason='nan_state'
+                break
 
             #check if propogation had passed the observer
             passedObs=0
@@ -522,6 +534,11 @@ class SatPredict(object):
                         print('Angle between coordinated: '+'%.3f'%ang)
                     surfaceDistance=(ang*earthR)
                 
+            if not math.isfinite(surfaceDistance):
+                error=1
+                exitReason='nan_state'
+                break
+
             visible=0
             if (surfaceDistance < halfSwath):
                 visible=1
@@ -537,6 +554,24 @@ class SatPredict(object):
 
             if (passedObs and visible):
                 tspan=float(tspan)/(-20.)
+                if math.fabs(tspan) < minStepSeconds:
+                    if self.verbose:
+                        print('Reached min step threshold.')
+                    break
+
+            # Progress watchdog to avoid pathological oscillation/stall.
+            if math.fabs(actualEpoch - prevEpoch) < (minStepSeconds / spd) * 0.1:
+                stallCount += 1
+            else:
+                stallCount = 0
+            prevEpoch = actualEpoch
+            if stallCount >= maxStallIterations:
+                error = 1
+                exitReason = 'stalled'
+                break
+
+        if not error and exitReason == 'unknown':
+            exitReason = 'converged'
 
         dx=satEci['x']-obsEci['x']
         dy=satEci['y']-obsEci['y']
@@ -567,6 +602,7 @@ class SatPredict(object):
                 'timeEndLOC':endTimeJulLoc, 'timeIniLOC':iniTimeJulLoc,
                 'timeZone':timeZone,
                 'propCnt':propCnt, 'timeSpan':tspan,
+                'exitReason':exitReason,
                 'error':error}
 
 #==================
