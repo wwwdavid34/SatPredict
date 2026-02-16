@@ -11,8 +11,9 @@ This repository modernizes the original `SatPredict.py` predictor into a package
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install -e .[dev]
 satpredict --help
+pytest -q
 ```
 
 ## Current status
