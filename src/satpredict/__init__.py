@@ -1,3 +1,3 @@
-from .engine import Predictor, PredictionRequest
+from .engine import Predictor, PredictionRequest, PredictionConfig
 
-__all__ = ["Predictor", "PredictionRequest"]
+__all__ = ["Predictor", "PredictionRequest", "PredictionConfig"]

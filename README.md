@@ -22,5 +22,6 @@ pytest -q
 - ✅ Package scaffold + CLI
 - ✅ CelesTrak fetch + local TLE ZIP extraction utilities
 - ✅ Runtime precision knobs exposed in modern wrapper (`coarse_step_seconds`, `iteration_limit`, `swath_km`, `bearing_precision_deg`, `min_step_seconds`, `max_stall_iterations`)
+- ✅ Sensor model abstraction scaffold (`pushbroom`, `offnadir`) for observation filtering
 - 🚧 Refactoring internals into stateless compute functions
 - 🚧 API contract implementation

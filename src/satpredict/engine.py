@@ -7,6 +7,7 @@ import importlib.util
 import sys
 
 from .models import TLE, Target
+from .sensors import sensor_from_name
 
 
 @dataclass(slots=True)
@@ -17,6 +18,8 @@ class PredictionConfig:
     bearing_precision_deg: float = 0.0001
     min_step_seconds: float = 0.005
     max_stall_iterations: int = 30
+    sensor_model: str = "pushbroom"
+    max_offnadir_deg: float = 30.0
 
 
 @dataclass(slots=True)
@@ -78,7 +81,25 @@ class Predictor:
 
         start_dt = datetime.fromisoformat(request.start_date.isoformat())
         start_jt = p.date2jd(start_dt)
-        return p._run_predict(p.satrec, start_jt, p.obsPos, p.predictDays, p.verbose)
+        raw = p._run_predict(p.satrec, start_jt, p.obsPos, p.predictDays, p.verbose)
+
+        sensor = sensor_from_name(cfg.sensor_model, swath_km=cfg.swath_km, max_offnadir_deg=cfg.max_offnadir_deg)
+        filtered: dict[str, dict] = {}
+        idx = 0
+        for key in sorted(raw.keys(), key=int):
+            row = raw[key]
+            observable = sensor.is_observable(
+                distance_km=float(row.get("distance", 1e18)),
+                scan_angle_deg=float(row.get("scanAngle", 1e18)),
+                sat_alt_km=float(row.get("satAlt", 0.0)) if row.get("satAlt") is not None else None,
+            )
+            if observable:
+                idx += 1
+                row = dict(row)
+                row["sensor_model"] = sensor.kind
+                row["observable"] = True
+                filtered[str(idx)] = row
+        return filtered
 
     def _legacy_satrec(self, line1: str, line2: str):
         from sgp4 import io

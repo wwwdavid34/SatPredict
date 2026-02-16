@@ -24,6 +24,8 @@ def main() -> None:
     parser.add_argument("--bearing-precision-deg", type=float, default=0.0001)
     parser.add_argument("--min-step-seconds", type=float, default=0.005)
     parser.add_argument("--max-stall-iterations", type=int, default=30)
+    parser.add_argument("--sensor-model", type=str, default="pushbroom", choices=["pushbroom", "offnadir"])
+    parser.add_argument("--max-offnadir-deg", type=float, default=30.0)
     args = parser.parse_args()
 
     if args.zip:
@@ -48,6 +50,8 @@ def main() -> None:
             bearing_precision_deg=args.bearing_precision_deg,
             min_step_seconds=args.min_step_seconds,
             max_stall_iterations=args.max_stall_iterations,
+            sensor_model=args.sensor_model,
+            max_offnadir_deg=args.max_offnadir_deg,
         ),
     )
 
