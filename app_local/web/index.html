@@ -1,0 +1,69 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Target-Centric Satellite Observation Platform (Local)</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 1000px; margin: 24px auto; padding: 0 16px; }
+    input, select, button { margin: 4px; padding: 6px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    pre { background:#111; color:#0f0; padding:12px; overflow:auto; max-height:420px; }
+  </style>
+</head>
+<body>
+  <h1>Target-Centric Satellite Observation Platform (Local MVP)</h1>
+  <p>SQLite + FastAPI demo. AWS migration later.</p>
+
+  <div>
+    <label>Search satellite</label>
+    <input id="q" value="25544" />
+    <button onclick="loadSats()">Search</button>
+    <select id="satSelect"></select>
+  </div>
+
+  <div>
+    <label>Lat</label><input id="lat" value="39.7392" />
+    <label>Lon</label><input id="lon" value="-104.9903" />
+    <label>Date</label><input id="date" value="2026-02-16" />
+    <label>Sensor</label>
+    <select id="sensor"><option value="pushbroom">pushbroom</option><option value="offnadir">offnadir</option></select>
+    <label>Max off-nadir</label><input id="off" value="30" />
+    <button onclick="predict()">Predict</button>
+  </div>
+
+  <div class="grid">
+    <div>
+      <h3>Satellites</h3>
+      <pre id="satOut"></pre>
+    </div>
+    <div>
+      <h3>Prediction Output</h3>
+      <pre id="predOut"></pre>
+    </div>
+  </div>
+
+<script>
+const API='http://127.0.0.1:8000/api';
+async function loadSats(){
+  const q=document.getElementById('q').value;
+  const r=await fetch(`${API}/satellites?q=${encodeURIComponent(q)}&limit=30`);
+  const j=await r.json();
+  document.getElementById('satOut').textContent=JSON.stringify(j,null,2);
+  const sel=document.getElementById('satSelect'); sel.innerHTML='';
+  (j.items||[]).forEach(s=>{ const o=document.createElement('option'); o.value=s.norad_id; o.textContent=`${s.norad_id} ${s.name||''}`; sel.appendChild(o);});
+}
+async function predict(){
+  const norad=document.getElementById('satSelect').value || document.getElementById('q').value;
+  const lat=document.getElementById('lat').value;
+  const lon=document.getElementById('lon').value;
+  const date=document.getElementById('date').value;
+  const sensor=document.getElementById('sensor').value;
+  const off=document.getElementById('off').value;
+  const url=`${API}/predict/overpass?norad_id=${norad}&target_lat=${lat}&target_lon=${lon}&start_date=${date}&predict_days=1&sensor_model=${sensor}&max_offnadir_deg=${off}`;
+  const r=await fetch(url); const j=await r.json();
+  document.getElementById('predOut').textContent=JSON.stringify(j,null,2);
+}
+loadSats();
+</script>
+</body>
+</html>

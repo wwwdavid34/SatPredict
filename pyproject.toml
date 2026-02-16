@@ -12,6 +12,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+web = ["fastapi>=0.112", "uvicorn>=0.30"]
 
 [project.scripts]
 satpredict = "satpredict.cli:main"

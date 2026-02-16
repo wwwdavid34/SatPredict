@@ -4,3 +4,6 @@ __pycache__/
 .pytest_cache/
 .DS_Store
 src/*.egg-info/
+data/*.db
+data/*.db-*
+data/vnf/
