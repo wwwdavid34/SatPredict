@@ -364,6 +364,9 @@
     shouldAnimate: false,
   });
   viewer.scene.globe.enableLighting = true;
+  /* Keep day/night shading at all zoom levels (default fades out when zoomed in) */
+  viewer.scene.globe.nightFadeOutDistance = 0;
+  viewer.scene.globe.nightFadeInDistance = 0;
 
   /* ---- DOM References ---- */
   const $toggleBtn    = document.getElementById('toggleBtn');
