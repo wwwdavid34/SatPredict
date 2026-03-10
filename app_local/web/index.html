@@ -117,31 +117,53 @@
     /* hide Cesium credit container to keep clean UI */
     .cesium-viewer-bottom { display: none !important; }
 
-    /* About / info panel */
-    #aboutToggle {
-      width: 100%; margin-top: 14px; padding: 8px 10px;
-      background: none; border: 1px solid rgba(255,255,255,0.12);
-      border-radius: 4px; color: #aaa; font-size: 12px;
-      cursor: pointer; text-align: left;
+    /* Info button (top-right) */
+    #infoBtn {
+      position: absolute; top: 12px; right: 12px; z-index: 10;
+      width: 36px; height: 36px; border-radius: 50%;
+      background: rgba(20, 20, 30, 0.88);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: #ccc; font-size: 18px; font-weight: 700; font-style: italic;
+      font-family: Georgia, 'Times New Roman', serif;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
     }
-    #aboutToggle:hover { background: rgba(255,255,255,0.05); color: #ccc; }
-    #aboutContent {
-      display: none; margin-top: 8px; padding: 12px;
-      background: rgba(0,0,0,0.3); border-radius: 6px;
-      font-size: 12px; line-height: 1.6; color: #bbb;
+    #infoBtn:hover { background: rgba(37,99,235,0.5); color: #fff; }
+
+    /* Info popup overlay */
+    #infoOverlay {
+      display: none; position: absolute; inset: 0; z-index: 20;
+      background: rgba(0,0,0,0.5);
     }
-    #aboutContent.open { display: block; }
-    #aboutContent h3 {
-      font-size: 13px; color: #ddd; margin: 14px 0 6px 0;
+    #infoOverlay.open { display: flex; align-items: center; justify-content: center; }
+
+    #infoPanel {
+      width: 520px; max-width: calc(100vw - 40px);
+      max-height: calc(100vh - 60px); overflow-y: auto;
+      background: rgba(20, 20, 30, 0.95);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px; padding: 24px;
+      font-size: 13px; line-height: 1.7; color: #bbb;
     }
-    #aboutContent h3:first-child { margin-top: 0; }
-    #aboutContent p { margin: 0 0 8px 0; }
-    #aboutContent .algo-step {
-      padding: 4px 0 4px 12px;
+    #infoPanel h2 {
+      font-size: 16px; color: #eee; margin: 0 0 14px 0;
+    }
+    #infoPanel h3 {
+      font-size: 14px; color: #ddd; margin: 18px 0 6px 0;
+    }
+    #infoPanel p { margin: 0 0 10px 0; }
+    #infoPanel .algo-step {
+      padding: 5px 0 5px 14px;
       border-left: 2px solid rgba(37,99,235,0.4);
-      margin: 4px 0;
-      color: #aaa;
+      margin: 5px 0; color: #aaa;
     }
+    #infoClose {
+      float: right; background: none; border: none;
+      color: #888; font-size: 20px; cursor: pointer; padding: 0 4px;
+      line-height: 1;
+    }
+    #infoClose:hover { color: #fff; }
   </style>
 </head>
 <body>
@@ -196,14 +218,20 @@
   <div id="passList"></div>
 
   <div id="status"></div>
+</div>
 
-  <button id="aboutToggle" type="button">About this tool &#9662;</button>
-  <div id="aboutContent">
+<button id="infoBtn" type="button">i</button>
+
+<div id="infoOverlay">
+  <div id="infoPanel">
+    <button id="infoClose" type="button">&#10005;</button>
+    <h2>Target-Centric Satellite Observation Predictor</h2>
+
     <h3>What is this?</h3>
     <p>
-      A target-centric satellite observation predictor. Given a ground location
-      and a satellite, it predicts when the satellite's sensor can actually
-      <em>observe</em> that target &mdash; not merely pass overhead.
+      Given a ground location and a satellite, this tool predicts when the
+      satellite's sensor can actually <em>observe</em> that target &mdash;
+      not merely pass overhead.
     </p>
 
     <h3>How it differs from standard overpass prediction</h3>
@@ -357,12 +385,18 @@
     $controlPanel.classList.toggle('collapsed');
   });
 
-  /* ---- About toggle ---- */
-  var $aboutToggle = document.getElementById('aboutToggle');
-  var $aboutContent = document.getElementById('aboutContent');
-  $aboutToggle.addEventListener('click', function () {
-    var open = $aboutContent.classList.toggle('open');
-    $aboutToggle.textContent = open ? 'About this tool \u25B4' : 'About this tool \u25BE';
+  /* ---- Info popup ---- */
+  var $infoBtn = document.getElementById('infoBtn');
+  var $infoOverlay = document.getElementById('infoOverlay');
+  var $infoClose = document.getElementById('infoClose');
+  $infoBtn.addEventListener('click', function () {
+    $infoOverlay.classList.add('open');
+  });
+  $infoClose.addEventListener('click', function () {
+    $infoOverlay.classList.remove('open');
+  });
+  $infoOverlay.addEventListener('click', function (e) {
+    if (e.target === $infoOverlay) $infoOverlay.classList.remove('open');
   });
 
   /* ---- Status helper ---- */
