@@ -76,18 +76,21 @@ def predict_overpass(
         if requested_date > (tle_epoch + timedelta(days=7)):
             requested_date = tle_epoch
 
+    cfg = PredictionConfig(sensor_model=sensor_model, max_offnadir_deg=max_offnadir_deg)
     req = PredictionRequest(
         tle=TLE(name=rec.name, line1=rec.line1, line2=rec.line2, source=rec.source or 'sqlite'),
         target=Target(lat=target_lat, lon=target_lon, alt_m=0.0),
         start_date=requested_date,
         predict_days=predict_days,
-        config=PredictionConfig(sensor_model=sensor_model, max_offnadir_deg=max_offnadir_deg),
+        config=cfg,
     )
     out = Predictor().run(req)
     return {
         'norad_id': norad_id,
         'target': {'lat': target_lat, 'lon': target_lon},
         'sensor_model': sensor_model,
+        'tle': {'line1': rec.line1, 'line2': rec.line2},
+        'swath_km': cfg.swath_km,
         'passes': [out[k] for k in sorted(out.keys(), key=int)],
         'count': len(out),
     }
