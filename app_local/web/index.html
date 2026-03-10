@@ -1,69 +1,762 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Target-Centric Satellite Observation Platform (Local)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Target-Centric Satellite Observation Platform</title>
+  <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.124/Build/Cesium/Widgets/widgets.css" />
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.124/Build/Cesium/Cesium.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; max-width: 1000px; margin: 24px auto; padding: 0 16px; }
-    input, select, button { margin: 4px; padding: 6px; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-    pre { background:#111; color:#0f0; padding:12px; overflow:auto; max-height:420px; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #eee;
+    }
+    #cesiumContainer { width: 100%; height: 100%; }
+
+    #controlPanel {
+      position: absolute; top: 12px; left: 12px;
+      width: 320px; z-index: 10;
+      background: rgba(20, 20, 30, 0.88);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      border-radius: 8px;
+      max-height: calc(100vh - 24px);
+      overflow-y: auto;
+      padding: 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    #controlPanel.collapsed { width: auto; padding: 0; overflow: hidden; }
+    #controlPanel.collapsed > *:not(#toggleBtn) { display: none; }
+
+    #toggleBtn {
+      background: rgba(255,255,255,0.1); border: none; color: #fff;
+      font-size: 18px; cursor: pointer; padding: 8px 12px; border-radius: 4px;
+      display: block; margin-bottom: 8px;
+    }
+    #controlPanel.collapsed #toggleBtn { margin: 4px; }
+    #toggleBtn:hover { background: rgba(255,255,255,0.18); }
+
+    label {
+      text-transform: uppercase; font-size: 11px; color: #aaa;
+      display: block; margin-bottom: 3px; margin-top: 10px;
+      letter-spacing: 0.5px;
+    }
+    input, select {
+      width: 100%; padding: 8px 10px; border-radius: 4px;
+      background: rgba(255,255,255,0.08); color: #fff;
+      border: 1px solid rgba(255,255,255,0.15);
+      font-size: 14px; outline: none;
+    }
+    input:focus, select:focus {
+      border-color: rgba(37,99,235,0.6);
+    }
+    select option { background: #1a1a2e; color: #fff; }
+
+    .inline-row {
+      display: flex; gap: 8px; align-items: flex-end;
+    }
+    .inline-row > div { flex: 1; }
+
+    button.primary {
+      width: 100%; padding: 10px; margin-top: 14px;
+      background: #2563eb; color: #fff; border: none;
+      border-radius: 4px; font-size: 14px; font-weight: 600;
+      cursor: pointer; letter-spacing: 0.3px;
+    }
+    button.primary:hover { background: #1d4ed8; }
+    button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    button.secondary {
+      padding: 8px 12px; background: rgba(255,255,255,0.1);
+      color: #fff; border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 4px; font-size: 13px; cursor: pointer;
+    }
+    button.secondary:hover { background: rgba(255,255,255,0.18); }
+
+    .search-row {
+      display: flex; gap: 6px; align-items: flex-end;
+    }
+    .search-row input { flex: 1; }
+    .search-row button { flex-shrink: 0; margin-top: 0; }
+
+    #passList { margin-top: 12px; }
+
+    .pass-item {
+      padding: 10px 12px; margin-bottom: 6px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px; cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .pass-item:hover {
+      background: rgba(255,255,255,0.1);
+    }
+    .pass-item.selected {
+      border-color: #2563eb;
+      background: rgba(37, 99, 235, 0.12);
+    }
+    .pass-item .pass-title {
+      font-weight: 600; font-size: 13px; margin-bottom: 3px;
+    }
+    .pass-item .pass-details {
+      font-size: 11px; color: #999;
+    }
+
+    #status {
+      margin-top: 10px; font-size: 12px; color: #888;
+      min-height: 18px;
+    }
+
+    .section-title {
+      font-size: 13px; font-weight: 600; margin-top: 16px; margin-bottom: 2px;
+      color: #ccc; border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding-bottom: 6px;
+    }
+
+    /* hide Cesium credit container to keep clean UI */
+    .cesium-viewer-bottom { display: none !important; }
   </style>
 </head>
 <body>
-  <h1>Target-Centric Satellite Observation Platform (Local MVP)</h1>
-  <p>SQLite + FastAPI demo. AWS migration later.</p>
 
-  <div>
-    <label>Search satellite</label>
-    <input id="q" value="25544" />
-    <button onclick="loadSats()">Search</button>
-    <select id="satSelect"></select>
+<div id="cesiumContainer"></div>
+
+<div id="controlPanel">
+  <button id="toggleBtn" type="button">&#9776;</button>
+
+  <div class="section-title">Satellite</div>
+  <label for="satQuery">Search</label>
+  <div class="search-row">
+    <input id="satQuery" type="text" value="25544" placeholder="NORAD ID or name" />
+    <button class="secondary" id="searchBtn" type="button">Search</button>
   </div>
+  <label for="satSelect">Select satellite</label>
+  <select id="satSelect"></select>
 
-  <div>
-    <label>Lat</label><input id="lat" value="39.7392" />
-    <label>Lon</label><input id="lon" value="-104.9903" />
-    <label>Date</label><input id="date" value="2026-02-16" />
-    <label>Sensor</label>
-    <select id="sensor"><option value="pushbroom">pushbroom</option><option value="offnadir">offnadir</option></select>
-    <label>Max off-nadir</label><input id="off" value="30" />
-    <button onclick="predict()">Predict</button>
-  </div>
-
-  <div class="grid">
+  <div class="section-title">Target</div>
+  <div class="inline-row">
     <div>
-      <h3>Satellites</h3>
-      <pre id="satOut"></pre>
+      <label for="latInput">Latitude</label>
+      <input id="latInput" type="number" step="0.0001" value="39.7392" />
     </div>
     <div>
-      <h3>Prediction Output</h3>
-      <pre id="predOut"></pre>
+      <label for="lonInput">Longitude</label>
+      <input id="lonInput" type="number" step="0.0001" value="-104.9903" />
     </div>
   </div>
+
+  <label for="dateInput">Date</label>
+  <input id="dateInput" type="date" />
+
+  <div class="section-title">Sensor</div>
+  <div class="inline-row">
+    <div>
+      <label for="sensorSelect">Model</label>
+      <select id="sensorSelect">
+        <option value="pushbroom">Pushbroom</option>
+        <option value="offnadir">Off-Nadir</option>
+      </select>
+    </div>
+    <div>
+      <label for="offnadirInput">Max off-nadir (&deg;)</label>
+      <input id="offnadirInput" type="number" step="1" value="30" />
+    </div>
+  </div>
+
+  <button class="primary" id="predictBtn" type="button">Predict Overpasses</button>
+
+  <div class="section-title">Passes</div>
+  <div id="passList"></div>
+
+  <div id="status"></div>
+</div>
 
 <script>
-const API='http://127.0.0.1:8000/api';
-async function loadSats(){
-  const q=document.getElementById('q').value;
-  const r=await fetch(`${API}/satellites?q=${encodeURIComponent(q)}&limit=30`);
-  const j=await r.json();
-  document.getElementById('satOut').textContent=JSON.stringify(j,null,2);
-  const sel=document.getElementById('satSelect'); sel.innerHTML='';
-  (j.items||[]).forEach(s=>{ const o=document.createElement('option'); o.value=s.norad_id; o.textContent=`${s.norad_id} ${s.name||''}`; sel.appendChild(o);});
-}
-async function predict(){
-  const norad=document.getElementById('satSelect').value || document.getElementById('q').value;
-  const lat=document.getElementById('lat').value;
-  const lon=document.getElementById('lon').value;
-  const date=document.getElementById('date').value;
-  const sensor=document.getElementById('sensor').value;
-  const off=document.getElementById('off').value;
-  const url=`${API}/predict/overpass?norad_id=${norad}&target_lat=${lat}&target_lon=${lon}&start_date=${date}&predict_days=1&sensor_model=${sensor}&max_offnadir_deg=${off}`;
-  const r=await fetch(url); const j=await r.json();
-  document.getElementById('predOut').textContent=JSON.stringify(j,null,2);
-}
-loadSats();
+/* ===========================================================
+   Target-Centric Satellite Observation Platform — CesiumJS UI
+   =========================================================== */
+(function () {
+  'use strict';
+
+  /* ---- Globals ---- */
+  const API = '/api';
+  let currentPasses = [];
+  let currentTLE = null;
+  let currentSwathKm = 3000;
+  let targetEntity = null;
+  let trackEntities = [];
+  let terminatorEntity = null;
+  let satelliteJsLoaded = false;
+
+  /* ---- Cesium Viewer ---- */
+  Cesium.Ion.defaultAccessToken =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0YTU2ZmIxYS1kNWY2LTQ0NTMtODE3MS0xNDVjNTkzNjkwNmQiLCJpZCI6MjU5LCJpYXQiOjE3MjUwNTIyOTR9.KqbMtFpqDT2i64iJnBFYqGFOzVCm4C2dEIVhbkuaeSQ';
+
+  const viewer = new Cesium.Viewer('cesiumContainer', {
+    terrainProvider: undefined,
+    baseLayerPicker: false,
+    geocoder: false,
+    homeButton: false,
+    sceneModePicker: false,
+    navigationHelpButton: false,
+    animation: false,
+    timeline: false,
+    fullscreenButton: false,
+    vrButton: false,
+    infoBox: false,
+    selectionIndicator: false,
+    shadows: false,
+    shouldAnimate: false,
+  });
+  viewer.scene.globe.enableLighting = true;
+
+  /* ---- DOM References ---- */
+  const $toggleBtn    = document.getElementById('toggleBtn');
+  const $controlPanel = document.getElementById('controlPanel');
+  const $satQuery     = document.getElementById('satQuery');
+  const $searchBtn    = document.getElementById('searchBtn');
+  const $satSelect    = document.getElementById('satSelect');
+  const $latInput     = document.getElementById('latInput');
+  const $lonInput     = document.getElementById('lonInput');
+  const $dateInput    = document.getElementById('dateInput');
+  const $sensorSelect = document.getElementById('sensorSelect');
+  const $offnadirInput= document.getElementById('offnadirInput');
+  const $predictBtn   = document.getElementById('predictBtn');
+  const $passList     = document.getElementById('passList');
+  const $status       = document.getElementById('status');
+
+  /* ---- Panel toggle ---- */
+  $toggleBtn.addEventListener('click', function () {
+    $controlPanel.classList.toggle('collapsed');
+  });
+
+  /* ---- Status helper ---- */
+  function setStatus(msg) {
+    $status.textContent = msg || '';
+  }
+
+  /* ---- Click-to-set target on globe ---- */
+  const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+  handler.setInputAction(function (click) {
+    var cartesian = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
+    if (!cartesian) return;
+    var carto = Cesium.Cartographic.fromCartesian(cartesian);
+    var lat = Cesium.Math.toDegrees(carto.latitude);
+    var lon = Cesium.Math.toDegrees(carto.longitude);
+    $latInput.value = lat.toFixed(4);
+    $lonInput.value = lon.toFixed(4);
+    placeTarget(lat, lon);
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+  /* ---- Place target marker ---- */
+  function placeTarget(lat, lon) {
+    if (targetEntity) {
+      viewer.entities.remove(targetEntity);
+      targetEntity = null;
+    }
+    targetEntity = viewer.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(lon, lat),
+      point: {
+        pixelSize: 10,
+        color: Cesium.Color.YELLOW,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 1,
+      },
+      label: {
+        text: 'Target',
+        font: '12px sans-serif',
+        fillColor: Cesium.Color.YELLOW,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        outlineWidth: 2,
+        outlineColor: Cesium.Color.BLACK,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        pixelOffset: new Cesium.Cartesian2(0, -14),
+      },
+    });
+  }
+
+  /* Sync target when user types lat/lon */
+  $latInput.addEventListener('change', function () {
+    placeTarget(parseFloat($latInput.value), parseFloat($lonInput.value));
+  });
+  $lonInput.addEventListener('change', function () {
+    placeTarget(parseFloat($latInput.value), parseFloat($lonInput.value));
+  });
+
+  /* ---- Load satellites ---- */
+  async function loadSats() {
+    var q = $satQuery.value.trim();
+    setStatus('Searching satellites...');
+    try {
+      var r = await fetch(API + '/satellites?q=' + encodeURIComponent(q) + '&limit=30');
+      var j = await r.json();
+      /* Clear dropdown safely */
+      while ($satSelect.firstChild) {
+        $satSelect.removeChild($satSelect.firstChild);
+      }
+      var items = j.items || [];
+      if (items.length === 0) {
+        var opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = '(no results)';
+        $satSelect.appendChild(opt);
+        setStatus('No satellites found.');
+        return;
+      }
+      items.forEach(function (s) {
+        var opt = document.createElement('option');
+        opt.value = String(s.norad_id);
+        opt.textContent = s.norad_id + ' ' + (s.name || '');
+        $satSelect.appendChild(opt);
+      });
+      setStatus(items.length + ' satellite(s) found.');
+    } catch (err) {
+      setStatus('Error loading satellites: ' + err.message);
+    }
+  }
+
+  $searchBtn.addEventListener('click', loadSats);
+  $satQuery.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') loadSats();
+  });
+
+  /* ---- Predict overpasses ---- */
+  async function predict() {
+    var norad = $satSelect.value || $satQuery.value.trim();
+    if (!norad) { setStatus('Select or enter a satellite.'); return; }
+    var lat = parseFloat($latInput.value);
+    var lon = parseFloat($lonInput.value);
+    var dateVal = $dateInput.value;
+    var sensor = $sensorSelect.value;
+    var offnadir = parseFloat($offnadirInput.value) || 30;
+
+    $predictBtn.disabled = true;
+    setStatus('Running prediction...');
+
+    try {
+      var url = API + '/predict/overpass?norad_id=' + encodeURIComponent(norad) +
+        '&target_lat=' + lat + '&target_lon=' + lon +
+        '&start_date=' + encodeURIComponent(dateVal) +
+        '&predict_days=1&sensor_model=' + encodeURIComponent(sensor) +
+        '&max_offnadir_deg=' + offnadir;
+
+      var r = await fetch(url);
+      if (!r.ok) {
+        var errText = await r.text();
+        setStatus('Prediction failed: ' + r.status + ' ' + errText);
+        return;
+      }
+      var j = await r.json();
+      currentPasses = j.passes || [];
+      currentTLE = j.tle || null;
+      currentSwathKm = j.swath_km || 3000;
+
+      renderPassList();
+
+      if (currentPasses.length > 0) {
+        setStatus(currentPasses.length + ' pass(es) found.');
+        selectPass(0);
+      } else {
+        setStatus('No passes found for the given parameters.');
+        clearTrack();
+      }
+    } catch (err) {
+      setStatus('Prediction error: ' + err.message);
+    } finally {
+      $predictBtn.disabled = false;
+    }
+  }
+
+  $predictBtn.addEventListener('click', predict);
+
+  /* ---- Render pass list ---- */
+  function renderPassList() {
+    while ($passList.firstChild) {
+      $passList.removeChild($passList.firstChild);
+    }
+    currentPasses.forEach(function (pass, idx) {
+      var div = document.createElement('div');
+      div.className = 'pass-item';
+      div.setAttribute('data-index', String(idx));
+
+      var title = document.createElement('div');
+      title.className = 'pass-title';
+      title.textContent = 'Pass ' + (idx + 1) + ': ' + (pass.timeEndLOC || pass.timeEndUTC || '');
+      div.appendChild(title);
+
+      var details = document.createElement('div');
+      details.className = 'pass-details';
+      var scanAngle = pass.scanAngle != null ? pass.scanAngle.toFixed(1) : '?';
+      var distance = pass.distance != null ? pass.distance.toFixed(1) : '?';
+      var satLat = pass.satLat != null ? pass.satLat.toFixed(2) : '?';
+      var satLon = pass.satLon != null ? pass.satLon.toFixed(2) : '?';
+      details.textContent = 'Off-nadir: ' + scanAngle + '\u00B0 \u00B7 Dist: ' + distance +
+        ' km \u00B7 Sat: ' + satLat + ', ' + satLon;
+      div.appendChild(details);
+
+      div.addEventListener('click', function () { selectPass(idx); });
+      $passList.appendChild(div);
+    });
+  }
+
+  /* ---- Select a pass ---- */
+  function selectPass(idx) {
+    /* Highlight in list */
+    var items = $passList.querySelectorAll('.pass-item');
+    items.forEach(function (el) { el.classList.remove('selected'); });
+    if (items[idx]) items[idx].classList.add('selected');
+
+    var pass = currentPasses[idx];
+    if (!pass) return;
+
+    /* Convert Julian date to Cesium JulianDate.
+       The legacy predictor stores timeEndUTC_J as a Julian Date number.
+       Julian Date 2451545.0 = 2000-01-01T12:00:00Z (J2000 epoch).
+    */
+    var jd = pass.timeEndUTC_J;
+    if (jd) {
+      /* Convert JD to JS Date:
+         JD 2440587.5 = 1970-01-01T00:00:00Z (Unix epoch) */
+      var msFromUnix = (jd - 2440587.5) * 86400000;
+      var jsDate = new Date(msFromUnix);
+      var cesiumTime = Cesium.JulianDate.fromDate(jsDate);
+      viewer.clock.currentTime = cesiumTime;
+      viewer.clock.shouldAnimate = false;
+    }
+
+    renderOrbit(pass);
+    updateTerminator();
+  }
+
+  /* ---- Clear orbit track entities ---- */
+  function clearTrack() {
+    trackEntities.forEach(function (ent) {
+      viewer.entities.remove(ent);
+    });
+    trackEntities = [];
+  }
+
+  /* ---- Render orbit track and swath ---- */
+  function renderOrbit(pass) {
+    clearTrack();
+    if (!currentTLE) {
+      setStatus('No TLE available for orbit rendering.');
+      return;
+    }
+    if (!satelliteJsLoaded) {
+      /* Dynamically load satellite.js from CDN */
+      var script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/satellite.js@5.0.0/dist/satellite.min.js';
+      script.onload = function () {
+        satelliteJsLoaded = true;
+        renderOrbitWithSgp4(pass);
+      };
+      script.onerror = function () {
+        setStatus('Failed to load satellite.js from CDN.');
+      };
+      document.head.appendChild(script);
+      return;
+    }
+    renderOrbitWithSgp4(pass);
+  }
+
+  function renderOrbitWithSgp4(pass) {
+    var satrec = satellite.twoline2satrec(currentTLE.line1, currentTLE.line2);
+
+    /* Parse mean motion from TLE line2 to compute orbital period */
+    var meanMotionStr = currentTLE.line2.substring(52, 63).trim();
+    var meanMotion = parseFloat(meanMotionStr);
+    if (!meanMotion || meanMotion <= 0) {
+      setStatus('Invalid mean motion in TLE.');
+      return;
+    }
+    var periodMinutes = 1440.0 / meanMotion;
+    var halfPeriodSec = (periodMinutes * 60) / 2;
+
+    /* Determine center time from pass Julian date */
+    var jd = pass.timeEndUTC_J;
+    var centerMs = (jd - 2440587.5) * 86400000;
+    var centerDate = new Date(centerMs);
+
+    /* Sample positions every 30 seconds for one full orbit */
+    var stepSec = 30;
+    var positions = [];
+    var closestIdx = 0;
+    var closestDist = Infinity;
+
+    for (var t = -halfPeriodSec; t <= halfPeriodSec; t += stepSec) {
+      var sampleDate = new Date(centerDate.getTime() + t * 1000);
+      var posVel = satellite.propagate(satrec, sampleDate);
+      if (!posVel.position || posVel.position === false) continue;
+
+      var gmst = satellite.gstime(sampleDate);
+      var geod = satellite.eciToGeodetic(posVel.position, gmst);
+
+      var lonDeg = Cesium.Math.toDegrees(geod.longitude);
+      var latDeg = Cesium.Math.toDegrees(geod.latitude);
+      var altKm = geod.height;
+
+      positions.push({
+        lon: lonDeg,
+        lat: latDeg,
+        alt: altKm,
+        time: sampleDate,
+        tOffset: t,
+      });
+
+      /* Find closest sample to pass time */
+      var abst = Math.abs(t);
+      if (abst < closestDist) {
+        closestDist = abst;
+        closestIdx = positions.length - 1;
+      }
+    }
+
+    if (positions.length < 2) {
+      setStatus('Could not propagate orbit for this pass.');
+      return;
+    }
+
+    /* Split at antimeridian crossings */
+    var segments = splitAtAntimeridian(positions);
+
+    /* Draw ground track: cyan polyline per segment */
+    segments.forEach(function (seg) {
+      var coords = [];
+      seg.forEach(function (p) {
+        coords.push(p.lon, p.lat);
+      });
+      var ent = viewer.entities.add({
+        polyline: {
+          positions: Cesium.Cartesian3.fromDegreesArray(coords),
+          width: 2,
+          material: Cesium.Color.CYAN,
+          clampToGround: true,
+        },
+      });
+      trackEntities.push(ent);
+    });
+
+    /* Draw swath corridor */
+    var swathHalfDeg = (currentSwathKm / 2) / 111.32;
+
+    segments.forEach(function (seg) {
+      if (seg.length < 2) return;
+      var leftCoords = [];
+      var rightCoords = [];
+
+      for (var i = 0; i < seg.length; i++) {
+        var nextIdx = Math.min(i + 1, seg.length - 1);
+        var prevIdx = Math.max(i - 1, 0);
+        var bearing = getBearing(seg[prevIdx].lat, seg[prevIdx].lon, seg[nextIdx].lat, seg[nextIdx].lon);
+
+        var leftPt = offsetPoint(seg[i].lat, seg[i].lon, swathHalfDeg, bearing - 90);
+        var rightPt = offsetPoint(seg[i].lat, seg[i].lon, swathHalfDeg, bearing + 90);
+        leftCoords.push(leftPt.lon, leftPt.lat);
+        rightCoords.push(rightPt.lon, rightPt.lat);
+      }
+
+      /* Build polygon: left coords forward + right coords reversed */
+      var polyCoords = [];
+      for (var k = 0; k < leftCoords.length; k += 2) {
+        polyCoords.push(leftCoords[k], leftCoords[k + 1]);
+      }
+      for (var k = rightCoords.length - 2; k >= 0; k -= 2) {
+        polyCoords.push(rightCoords[k], rightCoords[k + 1]);
+      }
+
+      var swathEnt = viewer.entities.add({
+        polygon: {
+          hierarchy: Cesium.Cartesian3.fromDegreesArray(polyCoords),
+          material: Cesium.Color.CYAN.withAlpha(0.12),
+          outline: true,
+          outlineColor: Cesium.Color.CYAN.withAlpha(0.3),
+          classificationType: Cesium.ClassificationType.TERRAIN,
+        },
+      });
+      trackEntities.push(swathEnt);
+    });
+
+    /* Satellite position marker at closest point to pass time */
+    var satPos = positions[closestIdx];
+    var satEnt = viewer.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(satPos.lon, satPos.lat, satPos.alt * 1000),
+      point: {
+        pixelSize: 10,
+        color: Cesium.Color.RED,
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 1,
+      },
+      label: {
+        text: 'SAT',
+        font: '11px sans-serif',
+        fillColor: Cesium.Color.RED,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        outlineWidth: 2,
+        outlineColor: Cesium.Color.BLACK,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        pixelOffset: new Cesium.Cartesian2(0, -14),
+      },
+    });
+    trackEntities.push(satEnt);
+
+    /* Fly camera to oblique view */
+    var tgtLat = parseFloat($latInput.value);
+    var tgtLon = parseFloat($lonInput.value);
+    flyToObliqueView(tgtLat, tgtLon, satPos);
+  }
+
+  /* ---- Fly to oblique view ---- */
+  function flyToObliqueView(tgtLat, tgtLon, satPos) {
+    /* Compute bearing from target to satellite position */
+    var bearingToSat = getBearing(tgtLat, tgtLon, satPos.lat, satPos.lon);
+
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(tgtLon, tgtLat, 2500000),
+      orientation: {
+        heading: Cesium.Math.toRadians(bearingToSat),
+        pitch: Cesium.Math.toRadians(-55),
+        roll: 0,
+      },
+      duration: 1.5,
+    });
+  }
+
+  /* ---- Terminator (day/night line) ---- */
+  function updateTerminator() {
+    if (terminatorEntity) {
+      viewer.entities.remove(terminatorEntity);
+      terminatorEntity = null;
+    }
+
+    var time = viewer.clock.currentTime;
+
+    /* Compute sub-solar point */
+    var sunEci = Cesium.Simon1994PlanetaryPositions.computeSunPositionInEarthInertialFrame(time);
+    var fixedMatrix = Cesium.Transforms.computeTemeToPseudoFixedMatrix(time);
+    var sunFixed = Cesium.Matrix3.multiplyByVector(fixedMatrix, sunEci, new Cesium.Cartesian3());
+
+    /* Normalize to get sub-solar unit vector */
+    var sunDir = Cesium.Cartesian3.normalize(sunFixed, new Cesium.Cartesian3());
+
+    /* Compute 360 points on the great circle 90 degrees from sub-solar point.
+       The terminator is the set of points where the angle from the sub-solar point is 90 deg.
+       We rotate the antipodal point around the sun direction axis. */
+    var numPoints = 360;
+    var terminatorCoords = [];
+
+    /* Build a local coordinate frame at the sub-solar point on the unit sphere */
+    /* The terminator circle lies on the plane perpendicular to sunDir, at the equator relative to the sun */
+    /* Find two perpendicular vectors to sunDir */
+    var up = new Cesium.Cartesian3(0, 0, 1);
+    var perp1 = Cesium.Cartesian3.cross(sunDir, up, new Cesium.Cartesian3());
+    if (Cesium.Cartesian3.magnitude(perp1) < 0.001) {
+      up = new Cesium.Cartesian3(0, 1, 0);
+      perp1 = Cesium.Cartesian3.cross(sunDir, up, new Cesium.Cartesian3());
+    }
+    perp1 = Cesium.Cartesian3.normalize(perp1, new Cesium.Cartesian3());
+    var perp2 = Cesium.Cartesian3.cross(sunDir, perp1, new Cesium.Cartesian3());
+    perp2 = Cesium.Cartesian3.normalize(perp2, new Cesium.Cartesian3());
+
+    /* Points 90 deg from sub-solar point on the unit sphere */
+    for (var i = 0; i < numPoints; i++) {
+      var angle = (2 * Math.PI * i) / numPoints;
+      /* Point on the great circle 90 deg from sun: cos(angle)*perp1 + sin(angle)*perp2 */
+      var px = Math.cos(angle) * perp1.x + Math.sin(angle) * perp2.x;
+      var py = Math.cos(angle) * perp1.y + Math.sin(angle) * perp2.y;
+      var pz = Math.cos(angle) * perp1.z + Math.sin(angle) * perp2.z;
+
+      var pt = new Cesium.Cartesian3(px * 6371000, py * 6371000, pz * 6371000);
+      var ptCarto = Cesium.Cartographic.fromCartesian(pt);
+      terminatorCoords.push(
+        Cesium.Math.toDegrees(ptCarto.longitude),
+        Cesium.Math.toDegrees(ptCarto.latitude)
+      );
+    }
+    /* Close the loop */
+    terminatorCoords.push(terminatorCoords[0], terminatorCoords[1]);
+
+    terminatorEntity = viewer.entities.add({
+      polyline: {
+        positions: Cesium.Cartesian3.fromDegreesArray(terminatorCoords),
+        width: 2,
+        material: Cesium.Color.ORANGE.withAlpha(0.6),
+        clampToGround: true,
+      },
+    });
+  }
+
+  /* ============================================================
+     Geometry Helpers
+     ============================================================ */
+
+  /** Bearing in degrees from point 1 to point 2 (all in degrees) */
+  function getBearing(lat1, lon1, lat2, lon2) {
+    var dLon = toRad(lon2 - lon1);
+    var y = Math.sin(dLon) * Math.cos(toRad(lat2));
+    var x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+            Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
+    var brng = Math.atan2(y, x);
+    return (toDeg(brng) + 360) % 360;
+  }
+
+  /** Offset a point by distDeg in bearingDeg direction */
+  function offsetPoint(lat, lon, distDeg, bearingDeg) {
+    var d = toRad(distDeg);
+    var brng = toRad(bearingDeg);
+    var lat1 = toRad(lat);
+    var lon1 = toRad(lon);
+    var lat2 = Math.asin(
+      Math.sin(lat1) * Math.cos(d) +
+      Math.cos(lat1) * Math.sin(d) * Math.cos(brng)
+    );
+    var lon2 = lon1 + Math.atan2(
+      Math.sin(brng) * Math.sin(d) * Math.cos(lat1),
+      Math.cos(d) - Math.sin(lat1) * Math.sin(lat2)
+    );
+    return { lat: toDeg(lat2), lon: toDeg(lon2) };
+  }
+
+  /** Split positions array at antimeridian crossings (|lon_delta| > 180) */
+  function splitAtAntimeridian(positions) {
+    if (positions.length === 0) return [];
+    var segments = [];
+    var current = [positions[0]];
+
+    for (var i = 1; i < positions.length; i++) {
+      var dLon = Math.abs(positions[i].lon - positions[i - 1].lon);
+      if (dLon > 180) {
+        segments.push(current);
+        current = [];
+      }
+      current.push(positions[i]);
+    }
+    if (current.length > 0) segments.push(current);
+    return segments;
+  }
+
+  function toRad(deg) { return deg * Math.PI / 180; }
+  function toDeg(rad) { return rad * 180 / Math.PI; }
+
+  /* ============================================================
+     Initialization
+     ============================================================ */
+
+  /* Set date input to today */
+  var today = new Date();
+  var yyyy = today.getFullYear();
+  var mm = String(today.getMonth() + 1).padStart(2, '0');
+  var dd = String(today.getDate()).padStart(2, '0');
+  $dateInput.value = yyyy + '-' + mm + '-' + dd;
+
+  /* Place default target */
+  placeTarget(39.7392, -104.9903);
+
+  /* Load satellites */
+  loadSats();
+
+})();
 </script>
 </body>
 </html>
