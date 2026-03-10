@@ -190,10 +190,15 @@
   let satelliteJsLoaded = false;
 
   /* ---- Cesium Viewer ---- */
-  Cesium.Ion.defaultAccessToken =
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiI0YTU2ZmIxYS1kNWY2LTQ0NTMtODE3MS0xNDVjNTkzNjkwNmQiLCJpZCI6MjU5LCJpYXQiOjE3MjUwNTIyOTR9.KqbMtFpqDT2i64iJnBFYqGFOzVCm4C2dEIVhbkuaeSQ';
+  // No Cesium Ion token needed — using open-source imagery providers
+  Cesium.Ion.defaultAccessToken = undefined;
 
   const viewer = new Cesium.Viewer('cesiumContainer', {
+    baseLayer: new Cesium.ImageryLayer(
+      new Cesium.OpenStreetMapImageryProvider({
+        url: 'https://tile.openstreetmap.org/',
+      })
+    ),
     terrainProvider: undefined,
     baseLayerPicker: false,
     geocoder: false,
