@@ -484,8 +484,8 @@
     var centerMs = (jd - 2440587.5) * 86400000;
     var centerDate = new Date(centerMs);
 
-    /* Sample positions every 30 seconds for one full orbit */
-    var stepSec = 30;
+    /* Sample positions every 60 seconds for one full orbit */
+    var stepSec = 60;
     var positions = [];
     var closestIdx = 0;
     var closestDist = Infinity;
@@ -526,18 +526,17 @@
     /* Split at antimeridian crossings */
     var segments = splitAtAntimeridian(positions);
 
-    /* Draw ground track: cyan polyline per segment (clamped to ground) */
+    /* Draw ground track: cyan polyline per segment (at surface height, no terrain clamping) */
     segments.forEach(function (seg) {
       var coords = [];
       seg.forEach(function (p) {
-        coords.push(p.lon, p.lat);
+        coords.push(p.lon, p.lat, 0);
       });
       var ent = viewer.entities.add({
         polyline: {
-          positions: Cesium.Cartesian3.fromDegreesArray(coords),
+          positions: Cesium.Cartesian3.fromDegreesArrayHeights(coords),
           width: 2,
           material: Cesium.Color.CYAN.withAlpha(0.5),
-          clampToGround: true,
         },
       });
       trackEntities.push(ent);
@@ -593,7 +592,7 @@
           material: Cesium.Color.CYAN.withAlpha(0.12),
           outline: true,
           outlineColor: Cesium.Color.CYAN.withAlpha(0.3),
-          classificationType: Cesium.ClassificationType.TERRAIN,
+          height: 0,
         },
       });
       trackEntities.push(swathEnt);
