@@ -326,6 +326,13 @@
     if (e.key === 'Enter') loadSats();
   });
 
+  /* Autocomplete: debounced search on typing */
+  var _searchTimer = null;
+  $satQuery.addEventListener('input', function () {
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(loadSats, 300);
+  });
+
   /* ---- Predict overpasses ---- */
   async function predict() {
     var norad = $satSelect.value || $satQuery.value.trim();
