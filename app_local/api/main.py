@@ -105,8 +105,8 @@ def predict_overpass(
     target_lon: float,
     start_date: str | None = None,
     predict_days: int = 1,
-    sensor_model: str = 'pushbroom',
-    max_offnadir_deg: float = 30.0,
+    swath_km: float = 3000.0,
+    max_offnadir_deg: float = 55.0,
 ):
     conn = connect()
     try:
@@ -122,7 +122,7 @@ def predict_overpass(
         if requested_date > (tle_epoch + timedelta(days=7)):
             requested_date = tle_epoch
 
-    cfg = PredictionConfig(sensor_model=sensor_model, max_offnadir_deg=max_offnadir_deg)
+    cfg = PredictionConfig(swath_km=swath_km, max_offnadir_deg=max_offnadir_deg)
     req = PredictionRequest(
         tle=TLE(name=rec.name, line1=rec.line1, line2=rec.line2, source=rec.source or 'sqlite'),
         target=Target(lat=target_lat, lon=target_lon, alt_m=0.0),
@@ -133,8 +133,8 @@ def predict_overpass(
     out = Predictor(repo_root=Path(__file__).resolve().parents[2]).run(req)
     return {
         'norad_id': norad_id,
+        'name': rec.name or '',
         'target': {'lat': target_lat, 'lon': target_lon},
-        'sensor_model': sensor_model,
         'tle': {'line1': rec.line1, 'line2': rec.line2},
         'swath_km': cfg.swath_km,
         'passes': [out[k] for k in sorted(out.keys(), key=int)],

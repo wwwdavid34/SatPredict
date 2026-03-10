@@ -20,7 +20,6 @@ def test_overpass_response_includes_tle_and_swath(client):
             "target_lat": 39.7392,
             "target_lon": -104.9903,
             "predict_days": 1,
-            "sensor_model": "pushbroom",
         },
     )
     if r.status_code == 404:

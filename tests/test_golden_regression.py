@@ -33,6 +33,13 @@ def test_golden_first_pass_regression_baseline():
     assert abs(first["scanAngle"] - 38.95316601042776) < 1e-6
 
 
+def test_offnadir_filter_excludes_wide_angles():
+    cfg = PredictionConfig(max_offnadir_deg=30.0)
+    out = Predictor().run(_fixture_request(cfg))
+    assert len(out) == 1
+    assert out["1"]["scanAngle"] < 30.0
+
+
 def test_golden_runtime_knob_does_not_shift_first_pass_time():
     out_default = Predictor().run(_fixture_request(PredictionConfig(coarse_step_seconds=120)))
     out_finer = Predictor().run(_fixture_request(PredictionConfig(coarse_step_seconds=60)))

@@ -7,7 +7,7 @@ import importlib.util
 import sys
 
 from .models import TLE, Target
-from .sensors import sensor_from_name
+from .sensors import PushBroomSensor
 
 
 @dataclass(slots=True)
@@ -18,8 +18,7 @@ class PredictionConfig:
     bearing_precision_deg: float = 0.0001
     min_step_seconds: float = 0.005
     max_stall_iterations: int = 30
-    sensor_model: str = "pushbroom"
-    max_offnadir_deg: float = 30.0
+    max_offnadir_deg: float = 55.0
 
 
 @dataclass(slots=True)
@@ -83,7 +82,7 @@ class Predictor:
         start_jt = p.date2jd(start_dt)
         raw = p._run_predict(p.satrec, start_jt, p.obsPos, p.predictDays, p.verbose)
 
-        sensor = sensor_from_name(cfg.sensor_model, swath_km=cfg.swath_km, max_offnadir_deg=cfg.max_offnadir_deg)
+        sensor = PushBroomSensor(swath_km=cfg.swath_km, max_offnadir_deg=cfg.max_offnadir_deg)
         filtered: dict[str, dict] = {}
         idx = 0
         for key in sorted(raw.keys(), key=int):

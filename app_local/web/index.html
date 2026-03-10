@@ -190,6 +190,25 @@
   <select id="satSelect"></select>
 
   <div class="section-title">Target</div>
+  <div style="font-size:10px;color:#666;margin-bottom:4px;">Click on globe to set target, or pick a city:</div>
+  <label for="locationPreset">Quick select</label>
+  <select id="locationPreset">
+    <option value="">-- select a city --</option>
+    <option value="40.7128,-74.0060">New York</option>
+    <option value="51.5074,-0.1278">London</option>
+    <option value="48.8566,2.3522">Paris</option>
+    <option value="35.6762,139.6503">Tokyo</option>
+    <option value="25.0330,121.5654">Taipei</option>
+    <option value="39.7392,-104.9903">Denver</option>
+    <option value="37.7749,-122.4194">San Francisco</option>
+    <option value="-33.8688,151.2093">Sydney</option>
+    <option value="55.7558,37.6173">Moscow</option>
+    <option value="28.6139,77.2090">New Delhi</option>
+    <option value="-22.9068,-43.1729">Rio de Janeiro</option>
+    <option value="1.3521,103.8198">Singapore</option>
+    <option value="30.0444,31.2357">Cairo</option>
+    <option value="64.1466,-21.9426">Reykjavik</option>
+  </select>
   <div class="inline-row">
     <div>
       <label for="latInput">Latitude</label>
@@ -201,27 +220,38 @@
     </div>
   </div>
 
-  <label for="dateInput">Date</label>
-  <input id="dateInput" type="date" />
+  <div class="inline-row">
+    <div style="flex:2">
+      <label for="dateInput">Start date</label>
+      <input id="dateInput" type="date" />
+    </div>
+    <div style="flex:1">
+      <label for="daysInput">Days</label>
+      <input id="daysInput" type="number" min="1" max="14" step="1" value="1" />
+    </div>
+  </div>
 
   <div class="section-title">Sensor</div>
   <div class="inline-row">
     <div>
-      <label for="sensorSelect">Model</label>
-      <select id="sensorSelect">
-        <option value="pushbroom">Pushbroom</option>
-        <option value="offnadir">Off-Nadir</option>
-      </select>
+      <label for="offnadirInput">Max off-nadir (&deg;)</label>
+      <input id="offnadirInput" type="number" step="0.1" value="55" />
     </div>
     <div>
-      <label for="offnadirInput">Max off-nadir (&deg;)</label>
-      <input id="offnadirInput" type="number" step="1" value="30" />
+      <label for="swathInput">Swath (km)</label>
+      <input id="swathInput" type="number" step="1" value="" />
     </div>
   </div>
+  <div style="font-size:10px;color:#666;margin-top:2px;">Ref alt: <span id="refAltLabel">700</span> km</div>
 
   <button class="primary" id="predictBtn" type="button">Predict Overpasses</button>
 
   <div class="section-title">Passes</div>
+  <select id="dayNightFilter" style="width:100%;margin-bottom:6px;">
+    <option value="all">All</option>
+    <option value="day">Day only</option>
+    <option value="night">Night only</option>
+  </select>
   <div id="passList"></div>
 
   <div id="status"></div>
@@ -340,6 +370,7 @@
   let currentPasses = [];
   let currentTLE = null;
   let currentSwathKm = 3000;
+  let currentSatLabel = 'SAT';
   let targetEntity = null;
   let trackEntities = [];
   let terminatorEntity = null;
@@ -381,13 +412,17 @@
   const $satQuery     = document.getElementById('satQuery');
   const $searchBtn    = document.getElementById('searchBtn');
   const $satSelect    = document.getElementById('satSelect');
+  const $locationPreset = document.getElementById('locationPreset');
   const $latInput     = document.getElementById('latInput');
   const $lonInput     = document.getElementById('lonInput');
   const $dateInput    = document.getElementById('dateInput');
-  const $sensorSelect = document.getElementById('sensorSelect');
+  const $daysInput    = document.getElementById('daysInput');
   const $offnadirInput= document.getElementById('offnadirInput');
+  const $swathInput   = document.getElementById('swathInput');
+  const $refAltLabel  = document.getElementById('refAltLabel');
   const $predictBtn   = document.getElementById('predictBtn');
   const $passList     = document.getElementById('passList');
+  const $dayNightFilter = document.getElementById('dayNightFilter');
   const $status       = document.getElementById('status');
 
   /* ---- Panel toggle ---- */
@@ -409,6 +444,57 @@
     if (e.target === $infoOverlay) $infoOverlay.classList.remove('open');
   });
 
+  /* ---- Spherical off-nadir <-> swath conversion ---- */
+  var EARTH_R = 6371.0; // km
+  var refAltKm = 700;   // default reference altitude, updated from predictions
+
+  function offnadirToSwath(thetaDeg, altKm) {
+    var R = EARTH_R, h = altKm;
+    var theta = thetaDeg * Math.PI / 180;
+    var sinGamma = (R + h) / R * Math.sin(theta);
+    if (sinGamma >= 1) return Infinity;
+    var gamma = Math.PI - Math.asin(sinGamma); /* obtuse: opposite longest side R+h */
+    var alpha = Math.PI - theta - gamma;
+    return 2 * R * alpha;
+  }
+
+  function swathToOffnadir(swathKm, altKm) {
+    var R = EARTH_R, h = altKm;
+    var alpha = (swathKm / 2) / R;
+    var sg = Math.sqrt(R * R + (R + h) * (R + h) - 2 * R * (R + h) * Math.cos(alpha));
+    var sinTheta = R * Math.sin(alpha) / sg;
+    if (sinTheta >= 1) return 90;
+    return Math.asin(sinTheta) * 180 / Math.PI;
+  }
+
+  function updateRefAlt(altKm) {
+    refAltKm = altKm;
+    $refAltLabel.textContent = Math.round(altKm);
+  }
+
+  /* Initialize swath from default off-nadir */
+  $swathInput.value = Math.round(offnadirToSwath(parseFloat($offnadirInput.value), refAltKm));
+
+  var _syncLock = false;
+  $offnadirInput.addEventListener('input', function () {
+    if (_syncLock) return;
+    _syncLock = true;
+    var deg = parseFloat($offnadirInput.value);
+    if (!isNaN(deg) && deg > 0 && deg < 90) {
+      $swathInput.value = Math.round(offnadirToSwath(deg, refAltKm));
+    }
+    _syncLock = false;
+  });
+  $swathInput.addEventListener('input', function () {
+    if (_syncLock) return;
+    _syncLock = true;
+    var km = parseFloat($swathInput.value);
+    if (!isNaN(km) && km > 0) {
+      $offnadirInput.value = swathToOffnadir(km, refAltKm).toFixed(1);
+    }
+    _syncLock = false;
+  });
+
   /* ---- Status helper ---- */
   function setStatus(msg) {
     $status.textContent = msg || '';
@@ -426,6 +512,18 @@
     $lonInput.value = lon.toFixed(4);
     placeTarget(lat, lon);
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+  /* ---- Location preset ---- */
+  $locationPreset.addEventListener('change', function () {
+    var val = $locationPreset.value;
+    if (!val) return;
+    var parts = val.split(',');
+    var lat = parseFloat(parts[0]);
+    var lon = parseFloat(parts[1]);
+    $latInput.value = lat.toFixed(4);
+    $lonInput.value = lon.toFixed(4);
+    placeTarget(lat, lon);
+  });
 
   /* ---- Place target marker ---- */
   function placeTarget(lat, lon) {
@@ -514,8 +612,8 @@
     var lon = parseFloat($lonInput.value);
     var dateVal = $dateInput.value;
     if (!dateVal) { setStatus('Please select a date.'); return; }
-    var sensor = $sensorSelect.value;
-    var offnadir = parseFloat($offnadirInput.value) || 30;
+    var offnadir = parseFloat($offnadirInput.value) || 55;
+    var swath = parseFloat($swathInput.value) || 3000;
 
     $predictBtn.disabled = true;
     setStatus('Running prediction...');
@@ -524,7 +622,7 @@
       var url = API + '/predict/overpass?norad_id=' + encodeURIComponent(norad) +
         '&target_lat=' + lat + '&target_lon=' + lon +
         '&start_date=' + encodeURIComponent(dateVal) +
-        '&predict_days=1&sensor_model=' + encodeURIComponent(sensor) +
+        '&predict_days=' + (parseInt($daysInput.value) || 1) + '&swath_km=' + swath +
         '&max_offnadir_deg=' + offnadir;
 
       var r = await fetch(url);
@@ -537,6 +635,12 @@
       currentPasses = j.passes || [];
       currentTLE = j.tle || null;
       currentSwathKm = j.swath_km || 3000;
+      currentSatLabel = (j.norad_id || '') + (j.name ? ' ' + j.name : '');
+
+      /* Update reference altitude from first pass for swath<->offnadir sync */
+      if (currentPasses.length > 0 && currentPasses[0].satAlt) {
+        updateRefAlt(currentPasses[0].satAlt);
+      }
 
       renderPassList();
 
@@ -561,7 +665,11 @@
     while ($passList.firstChild) {
       $passList.removeChild($passList.firstChild);
     }
+    var filter = $dayNightFilter.value;
     currentPasses.forEach(function (pass, idx) {
+      if (filter === 'day' && pass.dayNight !== 1) return;
+      if (filter === 'night' && pass.dayNight !== 0) return;
+
       var div = document.createElement('div');
       div.className = 'pass-item';
       div.setAttribute('data-index', String(idx));
@@ -576,7 +684,8 @@
       var scanAngle = pass.scanAngle != null ? pass.scanAngle.toFixed(1) : '?';
       var distance = pass.distance != null ? pass.distance.toFixed(1) : '?';
       var satAlt = pass.satAlt != null ? Number(pass.satAlt).toFixed(0) : '?';
-      details.textContent = 'Off-nadir: ' + scanAngle + '\u00B0 \u00B7 Dist: ' + distance +
+      var dayNight = pass.dayNight === 1 ? '\u2600\uFE0F Day' : '\uD83C\uDF19 Night';
+      details.textContent = dayNight + ' \u00B7 Off-nadir: ' + scanAngle + '\u00B0 \u00B7 Dist: ' + distance +
         ' km \u00B7 Alt: ' + satAlt + ' km';
       div.appendChild(details);
 
@@ -584,6 +693,8 @@
       $passList.appendChild(div);
     });
   }
+
+  $dayNightFilter.addEventListener('change', renderPassList);
 
   /* ---- Select a pass ---- */
   function selectPass(idx) {
@@ -738,8 +849,8 @@
       trackEntities.push(ent);
     });
 
-    /* Draw swath corridor */
-    var swathHalfDeg = (currentSwathKm / 2) / 111.32;
+    /* Draw swath corridor polygon using spherical off-nadir geometry */
+    var maxOffnadirRad = toRad(parseFloat($offnadirInput.value) || 55);
 
     segments.forEach(function (seg) {
       if (seg.length < 2) return;
@@ -747,17 +858,27 @@
       var rightCoords = [];
 
       for (var i = 0; i < seg.length; i++) {
+        var R = 6371.0;
+        var h = seg[i].alt;
+        var sinGamma = (R + h) / R * Math.sin(maxOffnadirRad);
+        var halfSwathDeg;
+        if (sinGamma >= 1) {
+          halfSwathDeg = 10;
+        } else {
+          halfSwathDeg = toDeg(Math.asin(sinGamma) - maxOffnadirRad);
+        }
+
         var nextIdx = Math.min(i + 1, seg.length - 1);
         var prevIdx = Math.max(i - 1, 0);
-        var bearing = getBearing(seg[prevIdx].lat, seg[prevIdx].lon, seg[nextIdx].lat, seg[nextIdx].lon);
+        var bearing = getBearing(seg[prevIdx].lat, seg[prevIdx].lon,
+                                 seg[nextIdx].lat, seg[nextIdx].lon);
 
-        var leftPt = offsetPoint(seg[i].lat, seg[i].lon, swathHalfDeg, bearing - 90);
-        var rightPt = offsetPoint(seg[i].lat, seg[i].lon, swathHalfDeg, bearing + 90);
-        leftCoords.push(leftPt.lon, leftPt.lat);
-        rightCoords.push(rightPt.lon, rightPt.lat);
+        var lp = offsetPoint(seg[i].lat, seg[i].lon, halfSwathDeg, bearing - 90);
+        var rp = offsetPoint(seg[i].lat, seg[i].lon, halfSwathDeg, bearing + 90);
+        leftCoords.push(lp.lon, lp.lat);
+        rightCoords.push(rp.lon, rp.lat);
       }
 
-      /* Build polygon: left coords forward + right coords reversed */
       var polyCoords = [];
       for (var k = 0; k < leftCoords.length; k += 2) {
         polyCoords.push(leftCoords[k], leftCoords[k + 1]);
@@ -789,7 +910,7 @@
         outlineWidth: 1,
       },
       label: {
-        text: 'SAT',
+        text: currentSatLabel,
         font: '11px sans-serif',
         fillColor: Cesium.Color.RED,
         style: Cesium.LabelStyle.FILL_AND_OUTLINE,
