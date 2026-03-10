@@ -4,6 +4,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -129,7 +130,7 @@ def predict_overpass(
         predict_days=predict_days,
         config=cfg,
     )
-    out = Predictor().run(req)
+    out = Predictor(repo_root=Path(__file__).resolve().parents[2]).run(req)
     return {
         'norad_id': norad_id,
         'target': {'lat': target_lat, 'lon': target_lon},
@@ -143,7 +144,6 @@ def predict_overpass(
 
 # --- Static file serving (must be last: catch-all at "/") ---
 from fastapi.staticfiles import StaticFiles
-from pathlib import Path
 
 _web_dir = Path(__file__).resolve().parent.parent / "web"
 app.mount("/", StaticFiles(directory=str(_web_dir), html=True), name="web")
