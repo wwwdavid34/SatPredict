@@ -328,6 +328,7 @@
     var lat = parseFloat($latInput.value);
     var lon = parseFloat($lonInput.value);
     var dateVal = $dateInput.value;
+    if (!dateVal) { setStatus('Please select a date.'); return; }
     var sensor = $sensorSelect.value;
     var offnadir = parseFloat($offnadirInput.value) || 30;
 
