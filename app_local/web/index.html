@@ -630,11 +630,38 @@
 
   /* ---- Fly to oblique view ---- */
   function flyToObliqueView(tgtLat, tgtLon, satPos) {
-    /* Compute bearing from target to satellite position */
-    var bearingToSat = getBearing(tgtLat, tgtLon, satPos.lat, satPos.lon);
+    /* Compute midpoint between target and satellite sub-point */
+    var midLat = (tgtLat + satPos.lat) / 2;
+    var midLon = (tgtLon + satPos.lon) / 2;
+
+    /* Handle antimeridian crossing for midpoint longitude */
+    if (Math.abs(tgtLon - satPos.lon) > 180) {
+      midLon = midLon + (midLon > 0 ? -180 : 180);
+    }
+
+    /* Angular separation between target and satellite (degrees) */
+    var dLat = Math.abs(tgtLat - satPos.lat);
+    var dLon = Math.abs(tgtLon - satPos.lon);
+    if (dLon > 180) dLon = 360 - dLon;
+    var angularSpan = Math.sqrt(dLat * dLat + dLon * dLon);
+
+    /* Camera altitude: scale with separation + margin (1.5x), minimum 800km */
+    var marginFactor = 1.5;
+    var altitudeM = Math.max(angularSpan * marginFactor * 111320, 800000);
+    /* Cap at 8000km so globe stays visible */
+    altitudeM = Math.min(altitudeM, 8000000);
+
+    /* Bearing from midpoint toward satellite for heading */
+    var bearingToSat = getBearing(midLat, midLon, satPos.lat, satPos.lon);
+
+    /* Position camera opposite the satellite, behind the target */
+    var camBearing = (bearingToSat + 180) % 360;
+    /* Offset camera from midpoint toward target side so both are visible */
+    var camOffsetDeg = angularSpan * 0.3;
+    var camPos = offsetPoint(midLat, midLon, camOffsetDeg, camBearing);
 
     viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(tgtLon, tgtLat, 2500000),
+      destination: Cesium.Cartesian3.fromDegrees(camPos.lon, camPos.lat, altitudeM),
       orientation: {
         heading: Cesium.Math.toRadians(bearingToSat),
         pitch: Cesium.Math.toRadians(-55),
