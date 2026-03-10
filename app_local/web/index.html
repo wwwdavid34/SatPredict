@@ -645,8 +645,8 @@
     var heading = Cesium.Math.toRadians(bearingToSat);
     var pitch = Cesium.Math.toRadians(-35);  /* 35° above horizon */
 
-    /* Range: pull back 1.8x the bounding sphere radius for comfortable margin */
-    var range = sphere.radius * 1.8;
+    /* Range: pull back 4x the bounding sphere radius for wide view */
+    var range = sphere.radius * 4.0;
 
     viewer.camera.flyToBoundingSphere(sphere, {
       offset: new Cesium.HeadingPitchRange(heading, pitch, range),
