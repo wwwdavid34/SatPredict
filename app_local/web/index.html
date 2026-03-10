@@ -116,6 +116,32 @@
 
     /* hide Cesium credit container to keep clean UI */
     .cesium-viewer-bottom { display: none !important; }
+
+    /* About / info panel */
+    #aboutToggle {
+      width: 100%; margin-top: 14px; padding: 8px 10px;
+      background: none; border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 4px; color: #aaa; font-size: 12px;
+      cursor: pointer; text-align: left;
+    }
+    #aboutToggle:hover { background: rgba(255,255,255,0.05); color: #ccc; }
+    #aboutContent {
+      display: none; margin-top: 8px; padding: 12px;
+      background: rgba(0,0,0,0.3); border-radius: 6px;
+      font-size: 12px; line-height: 1.6; color: #bbb;
+    }
+    #aboutContent.open { display: block; }
+    #aboutContent h3 {
+      font-size: 13px; color: #ddd; margin: 14px 0 6px 0;
+    }
+    #aboutContent h3:first-child { margin-top: 0; }
+    #aboutContent p { margin: 0 0 8px 0; }
+    #aboutContent .algo-step {
+      padding: 4px 0 4px 12px;
+      border-left: 2px solid rgba(37,99,235,0.4);
+      margin: 4px 0;
+      color: #aaa;
+    }
   </style>
 </head>
 <body>
@@ -170,6 +196,101 @@
   <div id="passList"></div>
 
   <div id="status"></div>
+
+  <button id="aboutToggle" type="button">About this tool &#9662;</button>
+  <div id="aboutContent">
+    <h3>What is this?</h3>
+    <p>
+      A target-centric satellite observation predictor. Given a ground location
+      and a satellite, it predicts when the satellite's sensor can actually
+      <em>observe</em> that target &mdash; not merely pass overhead.
+    </p>
+
+    <h3>How it differs from standard overpass prediction</h3>
+    <p>
+      Conventional overpass predictors (e.g. N2YO, Heavens-Above) compute
+      <strong>visibility windows</strong>: time ranges when a satellite is above
+      a minimum elevation angle from the observer. This answers "when can I
+      <em>see</em> the satellite?" &mdash; useful for visual observers and
+      radio operators.
+    </p>
+    <p>
+      This tool answers a different question: <strong>"when does the satellite's
+      sensor footprint cross my target?"</strong> It models the sensor's
+      geometry (swath width, off-nadir pointing capability) and finds the
+      precise moment the target falls within the sensor's observable area.
+      This is what matters for Earth observation, remote sensing, and
+      satellite imagery tasking.
+    </p>
+
+    <h3>The algorithm: bearing-convergence</h3>
+    <p>
+      Rather than sweeping a time grid for elevation crossings, the predictor
+      uses an iterative bearing-convergence method:
+    </p>
+    <div class="algo-step">
+      <strong>1. Propagate</strong> &mdash; Advance the satellite position
+      forward in time using SGP4/SDP4 orbital propagation from TLE data.
+    </div>
+    <div class="algo-step">
+      <strong>2. Compute bearing angle</strong> &mdash; Calculate the angle
+      between the satellite's velocity vector and the direction from satellite
+      to the ground target. When this angle is exactly 90&deg;, the satellite
+      is at its closest approach to the target.
+    </div>
+    <div class="algo-step">
+      <strong>3. Detect zero-crossing</strong> &mdash; Monitor the bearing
+      difference (angle &minus; 90&deg;). When it changes sign, the satellite
+      has passed the point of closest approach.
+    </div>
+    <div class="algo-step">
+      <strong>4. Bisect and converge</strong> &mdash; Reverse the time step
+      direction and shrink by 20&times;. Repeat until the bearing converges
+      below a precision threshold (0.0001&deg;), pinpointing the exact
+      overpass time.
+    </div>
+    <div class="algo-step">
+      <strong>5. Sensor filtering</strong> &mdash; At the converged time,
+      compute the ground distance and off-nadir scan angle. Apply the sensor
+      model constraints to determine if the target is actually observable.
+    </div>
+
+    <h3>Sensor models</h3>
+    <p>
+      <strong>Pushbroom</strong> &mdash; Models a wide-swath scanning sensor
+      (e.g. VIIRS, MODIS). The target is observable if the ground distance
+      is within half the swath width (default 3,000 km). This is the legacy
+      mode and captures most polar-orbiting imager passes.
+    </p>
+    <p>
+      <strong>Off-Nadir</strong> &mdash; Adds a scan angle constraint on top
+      of swath filtering. The target must be both within the swath
+      <em>and</em> within the maximum off-nadir pointing angle (default
+      30&deg;). This models agile sensors that can point but have a limited
+      look angle (e.g. high-resolution commercial imagers).
+    </p>
+
+    <h3>Visualization</h3>
+    <p>
+      <strong>Orbit track</strong> (white line at altitude) &mdash; One full
+      orbital period (~90 min) of the satellite's 3D trajectory, centered on
+      the predicted pass time.
+    </p>
+    <p>
+      <strong>Ground track</strong> (cyan line on surface) &mdash; The
+      sub-satellite point traced on the Earth's surface.
+    </p>
+    <p>
+      <strong>Swath footprint</strong> (cyan ribbon) &mdash; The sensor's
+      ground coverage corridor along the track, sized by the configured
+      swath width.
+    </p>
+    <p>
+      <strong>Day/night</strong> &mdash; Globe lighting and terminator line
+      are set to the predicted pass time, showing whether the observation
+      occurs in daylight or darkness.
+    </p>
+  </div>
 </div>
 
 <script>
@@ -234,6 +355,14 @@
   /* ---- Panel toggle ---- */
   $toggleBtn.addEventListener('click', function () {
     $controlPanel.classList.toggle('collapsed');
+  });
+
+  /* ---- About toggle ---- */
+  var $aboutToggle = document.getElementById('aboutToggle');
+  var $aboutContent = document.getElementById('aboutContent');
+  $aboutToggle.addEventListener('click', function () {
+    var open = $aboutContent.classList.toggle('open');
+    $aboutToggle.textContent = open ? 'About this tool \u25B4' : 'About this tool \u25BE';
   });
 
   /* ---- Status helper ---- */
