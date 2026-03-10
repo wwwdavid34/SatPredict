@@ -1,15 +1,52 @@
 from __future__ import annotations
 
+import asyncio
+import logging
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta
+
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from app_local.api.db import connect, init_db
 from app_local.api.repo import get_latest_tle, list_satellites
+from app_local.api.seed import refresh, seed_if_empty
 from satpredict.engine import PredictionConfig, PredictionRequest, Predictor
 from satpredict.models import TLE, Target
 
-app = FastAPI(title='SatPredict Local API', version='0.1.0')
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+REFRESH_INTERVAL_HOURS = 24
+
+
+async def _daily_refresh_loop():
+    """Background task: refresh TLEs from CelesTrak every 24 hours."""
+    while True:
+        await asyncio.sleep(REFRESH_INTERVAL_HOURS * 3600)
+        try:
+            conn = connect()
+            refresh(conn)
+            conn.close()
+        except Exception as e:
+            logger.error("Daily TLE refresh failed: %s", e)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: init DB and seed if empty
+    conn = connect()
+    init_db(conn)
+    seed_if_empty(conn)
+    conn.close()
+    # Launch daily refresh in background
+    task = asyncio.create_task(_daily_refresh_loop())
+    yield
+    # Shutdown
+    task.cancel()
+
+
+app = FastAPI(title='SatPredict Local API', version='0.1.0', lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=['*'],
@@ -19,15 +56,23 @@ app.add_middleware(
 )
 
 
-@app.on_event('startup')
-def startup():
-    conn = connect()
-    init_db(conn)
-    conn.close()
-
-
 @app.get('/api/health')
 def health():
+    conn = connect()
+    try:
+        count = conn.execute("SELECT COUNT(DISTINCT norad_id) FROM tle_records").fetchone()[0]
+    finally:
+        conn.close()
+    return {'ok': True, 'satellites': count}
+
+
+@app.post('/api/refresh')
+def trigger_refresh():
+    conn = connect()
+    try:
+        refresh(conn)
+    finally:
+        conn.close()
     return {'ok': True}
 
 
