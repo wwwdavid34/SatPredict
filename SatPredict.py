@@ -344,6 +344,7 @@ class SatPredict(object):
 
             # prepare output tuple of dictionaries
             a = {'id': cnt, 'satLat': out['satLat'], 'satLon': out['satLon'],
+                 'satAlt': out['satAlt'],
                  'scanAngle': out['scanAngle'], 'distance': out['distance'], 'bearing': out['bearing'],
                  'timeEndUTC': eu_str, 'timeEndLOC': el_str,
                  'timeEndUTC_J': out['timeEndUTC'], 'timeEndLOC_J': out['timeEndLOC'],
