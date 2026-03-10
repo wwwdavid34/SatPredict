@@ -94,3 +94,11 @@ def predict_overpass(
         'passes': [out[k] for k in sorted(out.keys(), key=int)],
         'count': len(out),
     }
+
+
+# --- Static file serving (must be last: catch-all at "/") ---
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+
+_web_dir = Path(__file__).resolve().parent.parent / "web"
+app.mount("/", StaticFiles(directory=str(_web_dir), html=True), name="web")
