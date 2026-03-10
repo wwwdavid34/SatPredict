@@ -849,13 +849,13 @@
       trackEntities.push(ent);
     });
 
-    /* Draw swath corridor polygon using spherical off-nadir geometry */
+    /* Draw swath as quad strips (avoids triangulation artifacts on long thin polygons) */
     var maxOffnadirRad = toRad(parseFloat($offnadirInput.value) || 55);
 
     segments.forEach(function (seg) {
       if (seg.length < 2) return;
-      var leftCoords = [];
-      var rightCoords = [];
+      var lefts = [];
+      var rights = [];
 
       for (var i = 0; i < seg.length; i++) {
         var R = 6371.0;
@@ -873,30 +873,26 @@
         var bearing = getBearing(seg[prevIdx].lat, seg[prevIdx].lon,
                                  seg[nextIdx].lat, seg[nextIdx].lon);
 
-        var lp = offsetPoint(seg[i].lat, seg[i].lon, halfSwathDeg, bearing - 90);
-        var rp = offsetPoint(seg[i].lat, seg[i].lon, halfSwathDeg, bearing + 90);
-        leftCoords.push(lp.lon, lp.lat);
-        rightCoords.push(rp.lon, rp.lat);
+        lefts.push(offsetPoint(seg[i].lat, seg[i].lon, halfSwathDeg, bearing - 90));
+        rights.push(offsetPoint(seg[i].lat, seg[i].lon, halfSwathDeg, bearing + 90));
       }
 
-      var polyCoords = [];
-      for (var k = 0; k < leftCoords.length; k += 2) {
-        polyCoords.push(leftCoords[k], leftCoords[k + 1]);
+      /* Emit one small quad polygon per pair of consecutive points */
+      for (var i = 0; i < lefts.length - 1; i++) {
+        var quad = [
+          lefts[i].lon, lefts[i].lat,
+          lefts[i + 1].lon, lefts[i + 1].lat,
+          rights[i + 1].lon, rights[i + 1].lat,
+          rights[i].lon, rights[i].lat,
+        ];
+        trackEntities.push(viewer.entities.add({
+          polygon: {
+            hierarchy: Cesium.Cartesian3.fromDegreesArray(quad),
+            material: Cesium.Color.CYAN.withAlpha(0.12),
+            height: 0,
+          },
+        }));
       }
-      for (var k = rightCoords.length - 2; k >= 0; k -= 2) {
-        polyCoords.push(rightCoords[k], rightCoords[k + 1]);
-      }
-
-      var swathEnt = viewer.entities.add({
-        polygon: {
-          hierarchy: Cesium.Cartesian3.fromDegreesArray(polyCoords),
-          material: Cesium.Color.CYAN.withAlpha(0.12),
-          outline: true,
-          outlineColor: Cesium.Color.CYAN.withAlpha(0.3),
-          height: 0,
-        },
-      });
-      trackEntities.push(swathEnt);
     });
 
     /* Satellite position marker at closest point to pass time */
