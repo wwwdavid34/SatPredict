@@ -21,7 +21,8 @@ def _fixture_request(config: PredictionConfig | None = None) -> PredictionReques
 
 
 def test_golden_first_pass_regression_baseline():
-    out = Predictor().run(_fixture_request())
+    result = Predictor().run(_fixture_request())
+    out = result.passes
     assert len(out) == 4
 
     first = out[sorted(out.keys(), key=int)[0]]
@@ -35,14 +36,15 @@ def test_golden_first_pass_regression_baseline():
 
 def test_offnadir_filter_excludes_wide_angles():
     cfg = PredictionConfig(max_offnadir_deg=30.0)
-    out = Predictor().run(_fixture_request(cfg))
+    result = Predictor().run(_fixture_request(cfg))
+    out = result.passes
     assert len(out) == 1
     assert out["1"]["scanAngle"] < 30.0
 
 
 def test_golden_runtime_knob_does_not_shift_first_pass_time():
-    out_default = Predictor().run(_fixture_request(PredictionConfig(coarse_step_seconds=120)))
-    out_finer = Predictor().run(_fixture_request(PredictionConfig(coarse_step_seconds=60)))
+    out_default = Predictor().run(_fixture_request(PredictionConfig(coarse_step_seconds=120))).passes
+    out_finer = Predictor().run(_fixture_request(PredictionConfig(coarse_step_seconds=60))).passes
 
     t1 = out_default[sorted(out_default.keys(), key=int)[0]]["timeEndUTC"]
     t2 = out_finer[sorted(out_finer.keys(), key=int)[0]]["timeEndUTC"]

@@ -22,8 +22,8 @@ def _fixture_req(max_offnadir: float = 55.0):
 
 def test_tighter_offnadir_filters_more():
     p = Predictor()
-    out_wide = p.run(_fixture_req(max_offnadir=55.0))
-    out_tight = p.run(_fixture_req(max_offnadir=30.0))
+    out_wide = p.run(_fixture_req(max_offnadir=55.0)).passes
+    out_tight = p.run(_fixture_req(max_offnadir=30.0)).passes
 
     assert len(out_tight) < len(out_wide)
     for key in out_tight:

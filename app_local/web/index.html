@@ -17,7 +17,7 @@
 
     #controlPanel {
       position: absolute; top: 12px; left: 12px;
-      width: 320px; z-index: 10;
+      width: 370px; z-index: 10;
       background: rgba(20, 20, 30, 0.88);
       backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
       border-radius: 8px;
@@ -97,10 +97,15 @@
       background: rgba(37, 99, 235, 0.12);
     }
     .pass-item .pass-title {
-      font-weight: 600; font-size: 13px; margin-bottom: 3px;
+      font-weight: 600; font-size: 13px; margin-bottom: 2px;
     }
+    .pass-item .pass-times {
+      font-size: 11px; color: #aaa; margin-bottom: 4px; line-height: 1.5;
+    }
+    .pass-item .pass-times span { color: #777; }
     .pass-item .pass-details {
       font-size: 11px; color: #999;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 1px 12px;
     }
 
     #status {
@@ -700,8 +705,23 @@
       if (currentPasses.length > 0) {
         setStatus(currentPasses.length + ' pass(es) found.');
         selectPass(0);
+      } else if (j.reachable === false) {
+        var incl = j.inclination_deg != null ? j.inclination_deg.toFixed(1) : '?';
+        var margin = j.offnadir_margin_deg != null ? j.offnadir_margin_deg.toFixed(1) : '?';
+        var maxLat = j.max_latitude_deg != null ? j.max_latitude_deg.toFixed(1) : '?';
+        var alt = j.apogee_alt_km != null ? Math.round(j.apogee_alt_km) : '?';
+        var offnadir = (parseFloat($offnadirInput.value) || 55).toFixed(1);
+        setStatus(
+          'Unreachable \u2014 Inclination ' + incl + '\u00B0 + ' +
+          margin + '\u00B0 viewing margin (' + offnadir +
+          '\u00B0 off-nadir at ' + alt + ' km) = \u00B1' +
+          maxLat + '\u00B0 max observable latitude. ' +
+          'Target is beyond coverage.'
+        );
+        clearTrack();
       } else {
-        setStatus('No passes found for the given parameters.');
+        setStatus('No observable passes within ' +
+          (parseInt($daysInput.value) || 1) + ' day(s) for this target.');
         clearTrack();
       }
     } catch (err) {
@@ -727,19 +747,51 @@
       div.className = 'pass-item';
       div.setAttribute('data-index', String(idx));
 
+      var sunIcon = pass.dayNight === 1 ? '\u2600\uFE0F' : '\uD83C\uDF19';
       var title = document.createElement('div');
       title.className = 'pass-title';
-      title.textContent = 'Pass ' + (idx + 1) + ': ' + (pass.timeEndLOC || pass.timeEndUTC || '');
+      title.textContent = sunIcon + ' Pass ' + (idx + 1);
       div.appendChild(title);
+
+      var times = document.createElement('div');
+      times.className = 'pass-times';
+      var utcTime = pass.timeEndUTC || '';
+      var locTime = pass.timeEndLOC || '';
+      var utcLabel = document.createElement('span');
+      utcLabel.textContent = 'UTC ';
+      times.appendChild(utcLabel);
+      times.appendChild(document.createTextNode(utcTime));
+      if (locTime) {
+        times.appendChild(document.createElement('br'));
+        var locLabel = document.createElement('span');
+        locLabel.textContent = 'LOC ';
+        times.appendChild(locLabel);
+        times.appendChild(document.createTextNode(locTime));
+      }
+      div.appendChild(times);
 
       var details = document.createElement('div');
       details.className = 'pass-details';
       var scanAngle = pass.scanAngle != null ? pass.scanAngle.toFixed(1) : '?';
-      var distance = pass.distance != null ? pass.distance.toFixed(1) : '?';
+      var distance = pass.distance != null ? pass.distance.toFixed(0) : '?';
       var satAlt = pass.satAlt != null ? Number(pass.satAlt).toFixed(0) : '?';
-      var dayNight = pass.dayNight === 1 ? '\u2600\uFE0F Day' : '\uD83C\uDF19 Night';
-      details.textContent = dayNight + ' \u00B7 Off-nadir: ' + scanAngle + '\u00B0 \u00B7 Dist: ' + distance +
-        ' km \u00B7 Alt: ' + satAlt + ' km';
+      var orbitDir = pass.ascending === 1 ? 'Asc \u2191' : 'Desc \u2193';
+      var dayOrNight = pass.dayNight === 1 ? 'Day' : 'Night';
+      var sunLabel = dayOrNight;
+      if (pass.solarElevation != null) {
+        sunLabel = 'SolZ: ' + (90 - pass.solarElevation).toFixed(0) + '\u00B0 (' + dayOrNight + ')';
+      }
+      var cells = [
+        'Off-nadir: ' + scanAngle + '\u00B0',
+        'Dist: ' + distance + ' km',
+        'Alt: ' + satAlt + ' km \u00B7 ' + orbitDir,
+        sunLabel,
+      ];
+      cells.forEach(function (text) {
+        var cell = document.createElement('div');
+        cell.textContent = text;
+        details.appendChild(cell);
+      });
       div.appendChild(details);
 
       div.addEventListener('click', function () { selectPass(idx); });

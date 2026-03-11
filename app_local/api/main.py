@@ -130,16 +130,28 @@ def predict_overpass(
         predict_days=predict_days,
         config=cfg,
     )
-    out = Predictor(repo_root=Path(__file__).resolve().parents[2]).run(req)
-    return {
+    result = Predictor(repo_root=Path(__file__).resolve().parents[2]).run(req)
+    response = {
         'norad_id': norad_id,
         'name': rec.name or '',
         'target': {'lat': target_lat, 'lon': target_lon},
         'tle': {'line1': rec.line1, 'line2': rec.line2},
         'swath_km': cfg.swath_km,
-        'passes': [out[k] for k in sorted(out.keys(), key=int)],
-        'count': len(out),
+        'passes': [result.passes[k] for k in sorted(result.passes.keys(), key=int)],
+        'count': len(result.passes),
+        'reachable': result.reachable,
     }
+    if result.max_latitude_deg is not None:
+        response['max_latitude_deg'] = result.max_latitude_deg
+    if result.inclination_deg is not None:
+        response['inclination_deg'] = result.inclination_deg
+    if result.offnadir_margin_deg is not None:
+        response['offnadir_margin_deg'] = result.offnadir_margin_deg
+    if result.apogee_alt_km is not None:
+        response['apogee_alt_km'] = result.apogee_alt_km
+    if result.reason:
+        response['reason'] = result.reason
+    return response
 
 
 # --- Static file serving (must be last: catch-all at "/") ---
