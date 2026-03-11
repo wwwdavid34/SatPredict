@@ -117,18 +117,56 @@
     /* hide Cesium credit container to keep clean UI */
     .cesium-viewer-bottom { display: none !important; }
 
-    /* Info button (top-right) */
-    #infoBtn {
+    .layer-toggles label {
+      display: block; font-size: 12px; color: #bbb;
+      cursor: pointer; padding: 2px 0;
+    }
+    .layer-toggles input[type="checkbox"] {
+      width: auto; margin-right: 6px; vertical-align: middle;
+    }
+
+    #satAttribs {
+      position: absolute; bottom: 24px; right: 12px; z-index: 10;
+      background: rgba(20, 20, 30, 0.85);
+      backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px; padding: 10px 14px;
+      font-size: 11px; line-height: 1.6; color: #ccc;
+      font-family: 'SF Mono', 'Consolas', monospace;
+      pointer-events: none;
+      display: none;
+    }
+    #satAttribs.visible { display: block; }
+    #satAttribs .attr-label { color: #888; }
+    #satAttribs .attr-value { color: #eee; }
+
+    /* Top-right button group */
+    .top-right-btns {
       position: absolute; top: 12px; right: 12px; z-index: 10;
+      display: flex; gap: 8px; align-items: flex-start;
+    }
+    .top-right-btns button.circle-btn {
       width: 36px; height: 36px; border-radius: 50%;
       background: rgba(20, 20, 30, 0.88);
       backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
       border: 1px solid rgba(255,255,255,0.15);
-      color: #ccc; font-size: 18px; font-weight: 700; font-style: italic;
-      font-family: Georgia, 'Times New Roman', serif;
-      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      color: #ccc; font-size: 18px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
     }
-    #infoBtn:hover { background: rgba(37,99,235,0.5); color: #fff; }
+    .top-right-btns button.circle-btn:hover { background: rgba(37,99,235,0.5); color: #fff; }
+    #infoBtn { font-weight: 700; font-style: italic; font-family: Georgia, 'Times New Roman', serif; }
+    #layersBtn { font-size: 16px; }
+
+    /* Layers dropdown */
+    #layersDropdown {
+      position: absolute; top: 44px; right: 0; z-index: 11;
+      background: rgba(20, 20, 30, 0.92);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px; padding: 10px 14px;
+      display: none; min-width: 170px;
+    }
+    #layersDropdown.open { display: block; }
 
     /* Info popup overlay */
     #infoOverlay {
@@ -175,6 +213,7 @@
 <body>
 
 <div id="cesiumContainer"></div>
+<div id="satAttribs"></div>
 <div id="copyright">&copy; Feng Chi (David), Hsu 2026</div>
 
 <div id="controlPanel">
@@ -257,7 +296,20 @@
   <div id="status"></div>
 </div>
 
-<button id="infoBtn" type="button">i</button>
+<div class="top-right-btns">
+  <div style="position:relative;">
+    <button id="layersBtn" class="circle-btn" type="button" title="Layers">&#9776;</button>
+    <div id="layersDropdown" class="layer-toggles">
+      <label><input type="checkbox" id="layerOrbit" checked /> Orbital track</label>
+      <label><input type="checkbox" id="layerGround" checked /> Ground track</label>
+      <label><input type="checkbox" id="layerSwath" checked /> Swath coverage</label>
+      <label><input type="checkbox" id="layerScanline" checked /> Scan line</label>
+      <label><input type="checkbox" id="layerArrow" checked /> Direction arrow</label>
+      <label><input type="checkbox" id="layerAttribs" checked /> Sat attributes</label>
+    </div>
+  </div>
+  <button id="infoBtn" class="circle-btn" type="button">i</button>
+</div>
 
 <div id="infoOverlay">
   <div id="infoPanel">
@@ -372,7 +424,7 @@
   let currentSwathKm = 3000;
   let currentSatLabel = 'SAT';
   let targetEntity = null;
-  let trackEntities = [];
+  let trackEntities = { orbit: [], ground: [], swath: [], scanline: [], arrow: [], marker: [] };
   let terminatorEntity = null;
   let satelliteJsLoaded = false;
 
@@ -714,6 +766,43 @@
     }
   });
 
+  /* ---- Layers button + dropdown ---- */
+  var $layersBtn = document.getElementById('layersBtn');
+  var $layersDD = document.getElementById('layersDropdown');
+  $layersBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    $layersDD.classList.toggle('open');
+  });
+  document.addEventListener('click', function (e) {
+    if (!$layersDD.contains(e.target) && e.target !== $layersBtn) {
+      $layersDD.classList.remove('open');
+    }
+  });
+
+  /* ---- Layer toggles ---- */
+  var layerMap = {
+    layerOrbit: 'orbit',
+    layerGround: 'ground',
+    layerSwath: 'swath',
+    layerScanline: 'scanline',
+    layerArrow: 'arrow',
+  };
+  Object.keys(layerMap).forEach(function (id) {
+    document.getElementById(id).addEventListener('change', function () {
+      var key = layerMap[id];
+      var show = this.checked;
+      trackEntities[key].forEach(function (ent) { ent.show = show; });
+    });
+  });
+  document.getElementById('layerAttribs').addEventListener('change', function () {
+    var $sa = document.getElementById('satAttribs');
+    if (this.checked && $sa.childNodes.length > 0) {
+      $sa.classList.add('visible');
+    } else {
+      $sa.classList.remove('visible');
+    }
+  });
+
   /* ---- Select a pass ---- */
   function selectPass(idx) {
     _selectedIdx = idx;
@@ -747,10 +836,13 @@
 
   /* ---- Clear orbit track entities ---- */
   function clearTrack() {
-    trackEntities.forEach(function (ent) {
-      viewer.entities.remove(ent);
+    Object.keys(trackEntities).forEach(function (key) {
+      trackEntities[key].forEach(function (ent) { viewer.entities.remove(ent); });
+      trackEntities[key] = [];
     });
-    trackEntities = [];
+    var $sa = document.getElementById('satAttribs');
+    $sa.classList.remove('visible');
+    $sa.textContent = '';
   }
 
   /* ---- Render orbit track and swath ---- */
@@ -850,7 +942,7 @@
           material: Cesium.Color.CYAN.withAlpha(0.5),
         },
       });
-      trackEntities.push(ent);
+      trackEntities.ground.push(ent);
     });
 
     /* Draw orbit track at altitude: white polyline per segment */
@@ -866,7 +958,7 @@
           material: Cesium.Color.WHITE.withAlpha(0.8),
         },
       });
-      trackEntities.push(ent);
+      trackEntities.orbit.push(ent);
     });
 
     /* Draw swath as quad strips (avoids triangulation artifacts on long thin polygons) */
@@ -905,7 +997,7 @@
           rights[i + 1].lon, rights[i + 1].lat,
           rights[i].lon, rights[i].lat,
         ];
-        trackEntities.push(viewer.entities.add({
+        trackEntities.swath.push(viewer.entities.add({
           polygon: {
             hierarchy: Cesium.Cartesian3.fromDegreesArray(quad),
             material: Cesium.Color.CYAN.withAlpha(0.12),
@@ -945,7 +1037,7 @@
         pixelOffset: new Cesium.Cartesian2(0, -14),
       },
     });
-    trackEntities.push(satEnt);
+    trackEntities.marker.push(satEnt);
 
     /* Scanline: red line perpendicular to ground track at exact pass time */
     /* Propagate ±5 sec for precise track bearing at pass time */
@@ -965,7 +1057,7 @@
     var scanHalfDeg = (sinG >= 1) ? 10 : toDeg(Math.asin(sinG) - maxOffnadirRad);
     var scanLeft = offsetPoint(satPos.lat, satPos.lon, scanHalfDeg, trackBearing - 90);
     var scanRight = offsetPoint(satPos.lat, satPos.lon, scanHalfDeg, trackBearing + 90);
-    trackEntities.push(viewer.entities.add({
+    trackEntities.scanline.push(viewer.entities.add({
       polyline: {
         positions: Cesium.Cartesian3.fromDegreesArrayHeights([
           scanLeft.lon, scanLeft.lat, 0,
@@ -978,7 +1070,7 @@
 
     /* Direction arrow: short arrow from satellite position toward movement */
     var arrowTip = offsetPoint(satPos.lat, satPos.lon, 3.0, trackBearing);
-    trackEntities.push(viewer.entities.add({
+    trackEntities.arrow.push(viewer.entities.add({
       polyline: {
         positions: Cesium.Cartesian3.fromDegreesArrayHeights([
           satPos.lon, satPos.lat, 0,
@@ -989,9 +1081,56 @@
       },
     }));
 
-    /* Fly camera to oblique view */
+    /* Satellite attributes HUD */
     var tgtLat = parseFloat($latInput.value);
     var tgtLon = parseFloat($lonInput.value);
+    var prevLat = Cesium.Math.toDegrees(prevGeod.latitude);
+    var prevLon = Cesium.Math.toDegrees(prevGeod.longitude);
+    var nextLat = Cesium.Math.toDegrees(nextGeod.latitude);
+    var nextLon = Cesium.Math.toDegrees(nextGeod.longitude);
+    /* Haversine ground distance between ±dtSec positions */
+    var dLat = toRad(nextLat - prevLat);
+    var dLon = toRad(nextLon - prevLon);
+    var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(toRad(prevLat)) * Math.cos(toRad(nextLat)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    var groundDistKm = 6371.0 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    var groundSpeedKmS = groundDistKm / (2 * dtSec);
+    var $sa = document.getElementById('satAttribs');
+    while ($sa.firstChild) $sa.removeChild($sa.firstChild);
+    var lines = [
+      ['Lat', satPos.lat.toFixed(4) + '\u00B0'],
+      ['Lon', satPos.lon.toFixed(4) + '\u00B0'],
+      ['Alt', satPos.alt.toFixed(1) + ' km'],
+      ['Heading', trackBearing.toFixed(1) + '\u00B0'],
+      ['Gnd Speed', (groundSpeedKmS.toFixed(2)) + ' km/s'],
+      ['Off-nadir', pass.scanAngle != null ? pass.scanAngle.toFixed(1) + '\u00B0' : '?'],
+      ['Distance', pass.distance != null ? pass.distance.toFixed(1) + ' km' : '?'],
+      ['Time (UTC)', pass.timeEndUTC || '?'],
+    ];
+    lines.forEach(function (pair) {
+      var row = document.createElement('div');
+      var lbl = document.createElement('span');
+      lbl.className = 'attr-label';
+      lbl.textContent = pair[0] + ': ';
+      var val = document.createElement('span');
+      val.className = 'attr-value';
+      val.textContent = pair[1];
+      row.appendChild(lbl);
+      row.appendChild(val);
+      $sa.appendChild(row);
+    });
+    if (document.getElementById('layerAttribs').checked) {
+      $sa.classList.add('visible');
+    }
+
+    /* Apply layer visibility from toggles */
+    Object.keys(layerMap).forEach(function (id) {
+      var show = document.getElementById(id).checked;
+      trackEntities[layerMap[id]].forEach(function (ent) { ent.show = show; });
+    });
+
+    /* Fly camera to oblique view */
     flyToObliqueView(tgtLat, tgtLon, satPos);
   }
 
