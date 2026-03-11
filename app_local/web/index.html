@@ -1287,8 +1287,19 @@
   var dd = String(today.getDate()).padStart(2, '0');
   $dateInput.value = yyyy + '-' + mm + '-' + dd;
 
-  /* Place default target */
-  placeTarget(39.7392, -104.9903);
+  /* Place target: try browser geolocation, fall back to Denver */
+  var DEFAULT_LAT = 39.7392, DEFAULT_LON = -104.9903;
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        placeTarget(pos.coords.latitude, pos.coords.longitude);
+      },
+      function () { placeTarget(DEFAULT_LAT, DEFAULT_LON); },
+      { timeout: 5000 }
+    );
+  } else {
+    placeTarget(DEFAULT_LAT, DEFAULT_LON);
+  }
 
   /* Load satellites */
   loadSats();
