@@ -915,8 +915,17 @@
       }
     });
 
-    /* Satellite position marker at closest point to pass time */
-    var satPos = positions[closestIdx];
+    /* Propagate to exact pass time for precise satellite position */
+    var exactPosVel = satellite.propagate(satrec, centerDate);
+    var exactGmst = satellite.gstime(centerDate);
+    var exactGeod = satellite.eciToGeodetic(exactPosVel.position, exactGmst);
+    var satPos = {
+      lon: Cesium.Math.toDegrees(exactGeod.longitude),
+      lat: Cesium.Math.toDegrees(exactGeod.latitude),
+      alt: exactGeod.height,
+    };
+
+    /* Satellite position marker at exact pass time */
     var satEnt = viewer.entities.add({
       position: Cesium.Cartesian3.fromDegrees(satPos.lon, satPos.lat, satPos.alt * 1000),
       point: {
@@ -937,6 +946,48 @@
       },
     });
     trackEntities.push(satEnt);
+
+    /* Scanline: red line perpendicular to ground track at exact pass time */
+    /* Propagate ±5 sec for precise track bearing at pass time */
+    var dtSec = 5;
+    var prevDate = new Date(centerDate.getTime() - dtSec * 1000);
+    var nextDate = new Date(centerDate.getTime() + dtSec * 1000);
+    var prevPV = satellite.propagate(satrec, prevDate);
+    var nextPV = satellite.propagate(satrec, nextDate);
+    var prevGeod = satellite.eciToGeodetic(prevPV.position, satellite.gstime(prevDate));
+    var nextGeod = satellite.eciToGeodetic(nextPV.position, satellite.gstime(nextDate));
+    var trackBearing = getBearing(
+      Cesium.Math.toDegrees(prevGeod.latitude), Cesium.Math.toDegrees(prevGeod.longitude),
+      Cesium.Math.toDegrees(nextGeod.latitude), Cesium.Math.toDegrees(nextGeod.longitude));
+    var R = 6371.0;
+    var h = satPos.alt;
+    var sinG = (R + h) / R * Math.sin(maxOffnadirRad);
+    var scanHalfDeg = (sinG >= 1) ? 10 : toDeg(Math.asin(sinG) - maxOffnadirRad);
+    var scanLeft = offsetPoint(satPos.lat, satPos.lon, scanHalfDeg, trackBearing - 90);
+    var scanRight = offsetPoint(satPos.lat, satPos.lon, scanHalfDeg, trackBearing + 90);
+    trackEntities.push(viewer.entities.add({
+      polyline: {
+        positions: Cesium.Cartesian3.fromDegreesArrayHeights([
+          scanLeft.lon, scanLeft.lat, 0,
+          scanRight.lon, scanRight.lat, 0,
+        ]),
+        width: 2,
+        material: Cesium.Color.MAGENTA.withAlpha(0.5),
+      },
+    }));
+
+    /* Direction arrow: short arrow from satellite position toward movement */
+    var arrowTip = offsetPoint(satPos.lat, satPos.lon, 3.0, trackBearing);
+    trackEntities.push(viewer.entities.add({
+      polyline: {
+        positions: Cesium.Cartesian3.fromDegreesArrayHeights([
+          satPos.lon, satPos.lat, 0,
+          arrowTip.lon, arrowTip.lat, 0,
+        ]),
+        width: 10,
+        material: new Cesium.PolylineArrowMaterialProperty(Cesium.Color.CYAN.withAlpha(0.7)),
+      },
+    }));
 
     /* Fly camera to oblique view */
     var tgtLat = parseFloat($latInput.value);
