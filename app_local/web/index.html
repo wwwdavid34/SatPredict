@@ -382,8 +382,9 @@
 
   const viewer = new Cesium.Viewer('cesiumContainer', {
     baseLayer: new Cesium.ImageryLayer(
-      new Cesium.OpenStreetMapImageryProvider({
-        url: 'https://tile.openstreetmap.org/',
+      new Cesium.UrlTemplateImageryProvider({
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+        credit: 'Esri',
       })
     ),
     terrainProvider: undefined,
@@ -694,14 +695,33 @@
     });
   }
 
-  $dayNightFilter.addEventListener('change', renderPassList);
+  var _selectedIdx = -1;
+
+  $dayNightFilter.addEventListener('change', function () {
+    renderPassList();
+    /* Re-apply highlight or fall back to first visible pass */
+    var restored = false;
+    if (_selectedIdx >= 0) {
+      var el = $passList.querySelector('.pass-item[data-index="' + _selectedIdx + '"]');
+      if (el) { el.classList.add('selected'); restored = true; }
+    }
+    if (!restored) {
+      var first = $passList.querySelector('.pass-item');
+      if (first) {
+        var idx = parseInt(first.getAttribute('data-index'));
+        selectPass(idx);
+      }
+    }
+  });
 
   /* ---- Select a pass ---- */
   function selectPass(idx) {
-    /* Highlight in list */
+    _selectedIdx = idx;
+    /* Highlight by data-index, not DOM position */
     var items = $passList.querySelectorAll('.pass-item');
     items.forEach(function (el) { el.classList.remove('selected'); });
-    if (items[idx]) items[idx].classList.add('selected');
+    var target = $passList.querySelector('.pass-item[data-index="' + idx + '"]');
+    if (target) target.classList.add('selected');
 
     var pass = currentPasses[idx];
     if (!pass) return;
