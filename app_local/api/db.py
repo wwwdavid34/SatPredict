@@ -22,14 +22,25 @@ def init_db(conn: sqlite3.Connection) -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             norad_id INTEGER NOT NULL,
             name TEXT,
-            line1 TEXT NOT NULL,
-            line2 TEXT NOT NULL,
+            line1 TEXT,
+            line2 TEXT,
             epoch_utc TEXT,
             source TEXT,
             ingested_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            omm_json TEXT,
             UNIQUE(norad_id, epoch_utc)
         );
         CREATE INDEX IF NOT EXISTS idx_tle_norad_epoch ON tle_records(norad_id, epoch_utc DESC);
         """
     )
+    _migrate_omm_column(conn)
     conn.commit()
+
+
+def _migrate_omm_column(conn: sqlite3.Connection) -> None:
+    """Add omm_json column to existing databases that lack it."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(tle_records)").fetchall()}
+    if "omm_json" not in cols:
+        conn.execute("ALTER TABLE tle_records ADD COLUMN omm_json TEXT")
+    # Relax NOT NULL on line1/line2 is handled by the new CREATE TABLE above;
+    # SQLite doesn't enforce NOT NULL changes on existing rows.

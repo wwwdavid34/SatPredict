@@ -8,10 +8,11 @@ import sqlite3
 class TLERecord:
     norad_id: int
     name: str | None
-    line1: str
-    line2: str
+    line1: str | None
+    line2: str | None
     epoch_utc: str | None
     source: str | None
+    omm_json: str | None = None
 
 
 def list_satellites(conn: sqlite3.Connection, q: str = "", limit: int = 50):
@@ -33,7 +34,7 @@ def list_satellites(conn: sqlite3.Connection, q: str = "", limit: int = 50):
 def get_latest_tle(conn: sqlite3.Connection, norad_id: int) -> TLERecord | None:
     row = conn.execute(
         """
-        SELECT norad_id, name, line1, line2, epoch_utc, source
+        SELECT norad_id, name, line1, line2, epoch_utc, source, omm_json
         FROM tle_records
         WHERE norad_id = ?
         ORDER BY epoch_utc DESC
@@ -49,8 +50,8 @@ def get_latest_tle(conn: sqlite3.Connection, norad_id: int) -> TLERecord | None:
 def upsert_tle(conn: sqlite3.Connection, rec: TLERecord) -> None:
     conn.execute(
         """
-        INSERT OR IGNORE INTO tle_records(norad_id, name, line1, line2, epoch_utc, source)
-        VALUES(?,?,?,?,?,?)
+        INSERT OR IGNORE INTO tle_records(norad_id, name, line1, line2, epoch_utc, source, omm_json)
+        VALUES(?,?,?,?,?,?,?)
         """,
-        (rec.norad_id, rec.name, rec.line1, rec.line2, rec.epoch_utc, rec.source),
+        (rec.norad_id, rec.name, rec.line1, rec.line2, rec.epoch_utc, rec.source, rec.omm_json),
     )

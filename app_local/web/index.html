@@ -957,10 +957,17 @@
       var latDeg = Cesium.Math.toDegrees(geod.latitude);
       var altKm = geod.height;
 
+      /* Also compute ECEF directly (km -> m) for geometrically exact
+         3D rendering.  ECI→ECF is a pure rotation, no geodetic
+         approximation involved. */
+      var ecf = satellite.eciToEcf(posVel.position, gmst);
+      var ecfCart = new Cesium.Cartesian3(ecf.x * 1000, ecf.y * 1000, ecf.z * 1000);
+
       positions.push({
         lon: lonDeg,
         lat: latDeg,
         alt: altKm,
+        ecef: ecfCart,
         time: sampleDate,
         tOffset: t,
       });
@@ -981,15 +988,35 @@
     /* Split at antimeridian crossings */
     var segments = splitAtAntimeridian(positions);
 
-    /* Draw ground track: cyan polyline per segment (at surface height, no terrain clamping) */
+    /* Draw ground track: cyan polyline per segment.
+       Project satellite ECEF positions radially (toward Earth's center) onto
+       the WGS84 ellipsoid.  Using ECEF directly (instead of geodetic lat/lon
+       at height 0) guarantees the ground point, satellite, and Earth's center
+       are collinear — so orbit and ground track share the same orbital plane. */
+    var WGS84_A = 6378137.0;          // semi-major axis (m)
+    var WGS84_B = 6356752.3142451793; // semi-minor axis (m)
+    var A2 = WGS84_A * WGS84_A;
+    var B2 = WGS84_B * WGS84_B;
+
+    function ecefToGeocentricSurface(cart) {
+      /* Scale a Cartesian3 radially to the WGS84 ellipsoid surface.
+         For direction d = normalize(cart), the surface point is t*d where
+         t = 1 / sqrt(dx²/a² + dy²/a² + dz²/b²). */
+      var mag = Cesium.Cartesian3.magnitude(cart);
+      if (mag === 0) return cart;
+      var dx = cart.x / mag, dy = cart.y / mag, dz = cart.z / mag;
+      var t = 1.0 / Math.sqrt((dx * dx + dy * dy) / A2 + dz * dz / B2);
+      return new Cesium.Cartesian3(dx * t, dy * t, dz * t);
+    }
+
     segments.forEach(function (seg) {
-      var coords = [];
+      var cartesians = [];
       seg.forEach(function (p) {
-        coords.push(p.lon, p.lat, 0);
+        cartesians.push(ecefToGeocentricSurface(p.ecef));
       });
       var ent = viewer.entities.add({
         polyline: {
-          positions: Cesium.Cartesian3.fromDegreesArrayHeights(coords),
+          positions: cartesians,
           width: 2,
           material: Cesium.Color.CYAN.withAlpha(0.5),
         },
@@ -997,15 +1024,17 @@
       trackEntities.ground.push(ent);
     });
 
-    /* Draw orbit track at altitude: white polyline per segment */
+    /* Draw orbit track at altitude: white polyline per segment.
+       Uses ECEF positions directly from the propagator — no geodetic
+       round-trip, so the orbit is geometrically exact. */
     segments.forEach(function (seg) {
-      var coords = [];
+      var cartesians = [];
       seg.forEach(function (p) {
-        coords.push(p.lon, p.lat, p.alt * 1000);
+        cartesians.push(p.ecef);
       });
       var ent = viewer.entities.add({
         polyline: {
-          positions: Cesium.Cartesian3.fromDegreesArrayHeights(coords),
+          positions: cartesians,
           width: 2,
           material: Cesium.Color.WHITE.withAlpha(0.8),
         },

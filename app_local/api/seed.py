@@ -3,13 +3,21 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import logging
 import sqlite3
 import urllib.request
 from typing import Iterator
 
 from app_local.api.repo import TLERecord, upsert_tle
-from app_local.api.tle_parse import epoch_from_line1, norad_from_line1
+from app_local.api.tle_parse import (
+    ALPHA5_MAX,
+    epoch_from_line1,
+    epoch_from_omm,
+    norad_from_line1,
+    omm_to_tle_lines,
+    parse_omm_record,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +33,7 @@ TLE_GROUPS = [
 ]
 
 CELESTRAK_TLE_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP={group}&FORMAT=tle"
+CELESTRAK_OMM_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP={group}&FORMAT=json"
 CELESTRAK_SATCAT_URL = "https://celestrak.org/pub/satcat.csv"
 USER_AGENT = "SatPredict/0.1"
 
@@ -60,38 +69,95 @@ def _iter_tles_from_text(text: str) -> Iterator[tuple[str | None, str, str]]:
 
 
 def seed_tles(conn: sqlite3.Connection) -> int:
-    """Fetch TLEs from CelesTrak and insert into DB. Returns count inserted."""
+    """Fetch OMM JSON from CelesTrak and insert into DB.
+
+    For NORAD IDs within Alpha-5 range (≤339999), TLE lines are synthesized
+    from OMM fields for backward compatibility.  For IDs beyond that range,
+    only omm_json is stored and propagation uses sgp4init() directly.
+
+    Falls back to legacy TLE text fetch if the JSON request fails.
+    Returns total count inserted.
+    """
     total = 0
     for group in TLE_GROUPS:
-        url = CELESTRAK_TLE_URL.format(group=group)
+        # Try OMM JSON first, fall back to TLE text
+        url = CELESTRAK_OMM_URL.format(group=group)
         try:
             text = _fetch_url(url)
+            records = json.loads(text)
+            count = _seed_from_omm(conn, records, group)
         except Exception as e:
-            logger.warning("Failed to fetch TLE group %s: %s", group, e)
-            continue
-
-        count = 0
-        for name, l1, l2 in _iter_tles_from_text(text):
-            try:
-                norad = norad_from_line1(l1)
-            except Exception:
-                continue
-            rec = TLERecord(
-                norad_id=norad,
-                name=name,
-                line1=l1,
-                line2=l2,
-                epoch_utc=epoch_from_line1(l1),
-                source=f"celestrak:{group}",
-            )
-            upsert_tle(conn, rec)
-            count += 1
+            logger.warning("OMM fetch failed for group %s (%s), falling back to TLE", group, e)
+            count = _seed_from_tle_text(conn, group)
 
         conn.commit()
         total += count
-        logger.info("Seeded %d TLEs from group '%s'", count, group)
+        logger.info("Seeded %d records from group '%s'", count, group)
 
     return total
+
+
+def _seed_from_omm(conn: sqlite3.Connection, records: list[dict], group: str) -> int:
+    """Ingest a list of CelesTrak OMM JSON records."""
+    count = 0
+    for omm in records:
+        try:
+            parsed = parse_omm_record(omm)
+        except (KeyError, ValueError) as e:
+            logger.debug("Skipping malformed OMM record: %s", e)
+            continue
+
+        norad_id = parsed["norad_id"]
+        epoch_utc = epoch_from_omm(parsed["epoch"])
+
+        # Synthesize TLE lines when possible
+        tle_pair = omm_to_tle_lines(omm)
+        line1 = tle_pair[0] if tle_pair else None
+        line2 = tle_pair[1] if tle_pair else None
+
+        # Store omm_json for all records (useful for OMM-only propagation)
+        omm_blob = json.dumps(omm, separators=(",", ":"))
+
+        rec = TLERecord(
+            norad_id=norad_id,
+            name=parsed["name"],
+            line1=line1,
+            line2=line2,
+            epoch_utc=epoch_utc,
+            source=f"celestrak:{group}",
+            omm_json=omm_blob,
+        )
+        upsert_tle(conn, rec)
+        count += 1
+    return count
+
+
+def _seed_from_tle_text(conn: sqlite3.Connection, group: str) -> int:
+    """Legacy fallback: fetch and parse TLE text format."""
+    url = CELESTRAK_TLE_URL.format(group=group)
+    try:
+        text = _fetch_url(url)
+    except Exception as e:
+        logger.warning("Failed to fetch TLE group %s: %s", group, e)
+        return 0
+
+    count = 0
+    for name, l1, l2 in _iter_tles_from_text(text):
+        try:
+            norad = norad_from_line1(l1)
+        except Exception:
+            continue
+        rec = TLERecord(
+            norad_id=norad,
+            name=name,
+            line1=l1,
+            line2=l2,
+            epoch_utc=epoch_from_line1(l1),
+            source=f"celestrak:{group}",
+        )
+        upsert_tle(conn, rec)
+        count += 1
+    return count
 
 
 def seed_names(conn: sqlite3.Connection) -> int:

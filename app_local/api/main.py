@@ -9,9 +9,12 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
+import json
+
 from app_local.api.db import connect, init_db
 from app_local.api.repo import get_latest_tle, list_satellites
 from app_local.api.seed import refresh, seed_if_empty
+from app_local.api.tle_parse import parse_omm_record
 from satpredict.engine import PredictionConfig, PredictionRequest, Predictor
 from satpredict.models import TLE, Target
 
@@ -122,9 +125,23 @@ def predict_overpass(
         if requested_date > (tle_epoch + timedelta(days=7)):
             requested_date = tle_epoch
 
+    # Parse OMM data if available (needed for OMM-only propagation)
+    omm_data = None
+    if rec.omm_json:
+        try:
+            omm_data = parse_omm_record(json.loads(rec.omm_json))
+        except (json.JSONDecodeError, KeyError, ValueError):
+            pass  # Fall through to TLE-based propagation
+
     cfg = PredictionConfig(swath_km=swath_km, max_offnadir_deg=max_offnadir_deg)
     req = PredictionRequest(
-        tle=TLE(name=rec.name, line1=rec.line1, line2=rec.line2, source=rec.source or 'sqlite'),
+        tle=TLE(
+            name=rec.name,
+            line1=rec.line1,
+            line2=rec.line2,
+            source=rec.source or 'sqlite',
+            omm_data=omm_data,
+        ),
         target=Target(lat=target_lat, lon=target_lon, alt_m=0.0),
         start_date=requested_date,
         predict_days=predict_days,

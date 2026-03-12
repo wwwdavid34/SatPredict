@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -5,9 +7,10 @@ from datetime import datetime
 @dataclass(slots=True)
 class TLE:
     name: str | None
-    line1: str
-    line2: str
+    line1: str | None
+    line2: str | None
     source: str
+    omm_data: dict | None = None
 
 
 @dataclass(slots=True)

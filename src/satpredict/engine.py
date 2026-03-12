@@ -190,7 +190,14 @@ class Predictor:
         p.tleL2 = request.tle.line2
         p.tleL1Input = None
         p.tleL2Input = None
-        p.satrec = self._legacy_satrec(request.tle.line1, request.tle.line2)
+
+        # Choose satrec construction path: TLE lines (legacy) or OMM direct
+        if request.tle.line1 and request.tle.line2:
+            p.satrec = self._legacy_satrec(request.tle.line1, request.tle.line2)
+        elif request.tle.omm_data:
+            p.satrec = self._omm_satrec(request.tle.omm_data)
+        else:
+            raise ValueError("TLE record has neither TLE lines nor OMM data")
         p.get_satrec = lambda *args, **kwargs: p.satrec
 
         # --- Reachability guard ---
@@ -260,3 +267,69 @@ class Predictor:
         from sgp4.earth_gravity import wgs72
 
         return io.twoline2rv(line1, line2, wgs72)
+
+    @staticmethod
+    def _omm_satrec(omm: dict):
+        """Construct satrec directly from parsed OMM elements via sgp4init().
+
+        This path is used when TLE lines cannot represent the satellite
+        (e.g. NORAD ID > 339999 exceeding Alpha-5 encoding).
+
+        ``omm`` is the dict returned by ``parse_omm_record()``, with orbital
+        elements in natural units (degrees, rev/day).
+        """
+        from sgp4.propagation import sgp4init
+        from sgp4.earth_gravity import wgs72
+        from sgp4.model import Satellite
+        from sgp4.ext import jday
+
+        satrec = Satellite()
+        satrec.error = 0
+        satrec.whichconst = wgs72
+
+        deg2rad = math.pi / 180.0
+        xpdotp = 1440.0 / (2.0 * math.pi)  # rev/day → rad/min factor
+
+        # Mean motion: rev/day → rad/min (SGP4 internal unit)
+        xno = omm["mean_motion"] / xpdotp
+
+        # Parse epoch ISO string to Julian date
+        epoch_str = omm["epoch"].replace("Z", "+00:00")
+        if "+" not in epoch_str and not epoch_str.endswith("+00:00"):
+            epoch_str += "+00:00"
+        from datetime import datetime as _dt
+        epoch_dt = _dt.fromisoformat(epoch_str)
+        epoch_jd = jday(
+            epoch_dt.year, epoch_dt.month, epoch_dt.day,
+            epoch_dt.hour, epoch_dt.minute,
+            epoch_dt.second + epoch_dt.microsecond / 1e6,
+        )
+
+        # Set attributes that sgp4init and downstream code expect
+        satrec.satnum = omm["norad_id"]
+        satrec.epochyr = epoch_dt.year
+        satrec.epochdays = (
+            epoch_dt.timetuple().tm_yday
+            + (epoch_dt.hour * 3600 + epoch_dt.minute * 60
+               + epoch_dt.second + epoch_dt.microsecond / 1e6) / 86400.0
+        )
+        satrec.jdsatepoch = epoch_jd
+        satrec.epoch = epoch_dt.replace(tzinfo=None)
+
+        # ndot/nddot stored but ignored by SGP4; set for completeness
+        satrec.ndot = omm["mean_motion_dot"] / (xpdotp * 1440.0)
+        satrec.nddot = omm["mean_motion_ddot"] / (xpdotp * 1440.0 * 1440.0)
+
+        sgp4init(
+            wgs72, "i", omm["norad_id"],
+            epoch_jd - 2433281.5,  # epoch in days since 1949-12-31 00:00 UT
+            omm["bstar"],
+            omm["eccentricity"],
+            omm["arg_of_pericenter"] * deg2rad,
+            omm["inclination"] * deg2rad,
+            omm["mean_anomaly"] * deg2rad,
+            xno,
+            omm["ra_of_asc_node"] * deg2rad,
+            satrec,
+        )
+        return satrec
