@@ -2,50 +2,11 @@ export interface Env {
   ORBITAL_API_KEY: string;
 }
 
-export interface SatelliteRow {
-  norad_id: number;
-  name: string;
-  intl_designator: string | null;
-  object_type: string | null;
-  updated_at: string;
-}
-
-export interface TleRow {
-  norad_id: number;
-  line1: string | null;
-  line2: string | null;
-  epoch_utc: string | null;
-  source: string | null;
-  omm_json: string | null;
-  updated_at: string;
-}
-
 export interface SatelliteSearchResult {
   norad_id: number;
   name: string;
   object_type: string | null;
   epoch_utc: string | null;
-}
-
-export interface OmmRecord {
-  NORAD_CAT_ID: string;
-  OBJECT_NAME?: string;
-  EPOCH: string;
-  MEAN_MOTION: string;
-  ECCENTRICITY: string;
-  INCLINATION: string;
-  RA_OF_ASC_NODE: string;
-  ARG_OF_PERICENTER: string;
-  MEAN_ANOMALY: string;
-  BSTAR: string;
-  MEAN_MOTION_DOT: string;
-  MEAN_MOTION_DDOT: string;
-  CLASSIFICATION_TYPE?: string;
-  ELEMENT_SET_NO?: string;
-  REV_AT_EPOCH?: string;
-  EPHEMERIS_TYPE?: string;
-  OBJECT_ID?: string;
-  OBJECT_TYPE?: string;
 }
 
 export interface PredictionConfig {
