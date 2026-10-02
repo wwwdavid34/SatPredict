@@ -1,0 +1,1405 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Target-Centric Satellite Observation Platform</title>
+  <link rel="stylesheet" href="https://cesium.com/downloads/cesiumjs/releases/1.124/Build/Cesium/Widgets/widgets.css" />
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.124/Build/Cesium/Cesium.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #eee;
+    }
+    #cesiumContainer { width: 100%; height: 100%; }
+
+    #controlPanel {
+      position: absolute; top: 56px; left: 12px;
+      width: 370px; z-index: 10;
+      background: rgba(20, 20, 30, 0.88);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      border-radius: 8px;
+      max-height: calc(100vh - 68px);
+      overflow-y: auto;
+      padding: 14px;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    #controlPanel.collapsed { display: none; }
+
+    #toggleBtn {
+      position: fixed; top: 14px; left: 14px; z-index: 12;
+      background: rgba(20, 20, 30, 0.88);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.15); color: #fff;
+      font-size: 18px; cursor: pointer; padding: 8px 12px; border-radius: 4px;
+    }
+    #toggleBtn:hover { background: rgba(37,99,235,0.5); color: #fff; }
+
+    label {
+      text-transform: uppercase; font-size: 11px; color: #aaa;
+      display: block; margin-bottom: 3px; margin-top: 10px;
+      letter-spacing: 0.5px;
+    }
+    input, select {
+      width: 100%; padding: 8px 10px; border-radius: 4px;
+      background: rgba(255,255,255,0.08); color: #fff;
+      border: 1px solid rgba(255,255,255,0.15);
+      font-size: 16px; outline: none;
+      box-sizing: border-box;
+    }
+    input:focus, select:focus {
+      border-color: rgba(37,99,235,0.6);
+    }
+    select option { background: #1a1a2e; color: #fff; }
+
+    .inline-row {
+      display: flex; gap: 8px; align-items: flex-end;
+    }
+    .inline-row > div { flex: 1; min-width: 0; }
+
+    button.primary {
+      width: 100%; padding: 10px; margin-top: 14px;
+      background: #2563eb; color: #fff; border: none;
+      border-radius: 4px; font-size: 14px; font-weight: 600;
+      cursor: pointer; letter-spacing: 0.3px;
+    }
+    button.primary:hover { background: #1d4ed8; }
+    button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    button.secondary {
+      padding: 8px 12px; background: rgba(255,255,255,0.1);
+      color: #fff; border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 4px; font-size: 13px; cursor: pointer;
+    }
+    button.secondary:hover { background: rgba(255,255,255,0.18); }
+
+    .search-row {
+      display: flex; gap: 6px; align-items: flex-end;
+    }
+    .search-row input { flex: 1; }
+    .search-row button { flex-shrink: 0; margin-top: 0; }
+
+    #passList { margin-top: 12px; }
+
+    .pass-item {
+      padding: 10px 12px; margin-bottom: 6px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px; cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .pass-item:hover {
+      background: rgba(255,255,255,0.1);
+    }
+    .pass-item.selected {
+      border-color: #2563eb;
+      background: rgba(37, 99, 235, 0.12);
+    }
+    .pass-item .pass-title {
+      font-weight: 600; font-size: 13px; margin-bottom: 2px;
+    }
+    .pass-item .pass-times {
+      font-size: 11px; color: #aaa; margin-bottom: 4px; line-height: 1.5;
+    }
+    .pass-item .pass-times span { color: #777; }
+    .pass-item .pass-details {
+      font-size: 11px; color: #999;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 1px 12px;
+    }
+
+    #status {
+      margin-top: 10px; font-size: 12px; color: #888;
+      min-height: 18px;
+    }
+
+    .section-title {
+      font-size: 13px; font-weight: 600; margin-top: 16px; margin-bottom: 2px;
+      color: #ccc; border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding-bottom: 6px;
+    }
+
+    /* hide Cesium credit container to keep clean UI */
+    .cesium-viewer-bottom { display: none !important; }
+
+    .layer-toggles label {
+      display: block; font-size: 12px; color: #bbb;
+      cursor: pointer; padding: 2px 0;
+    }
+    .layer-toggles input[type="checkbox"] {
+      width: auto; margin-right: 6px; vertical-align: middle;
+    }
+
+    #satAttribs {
+      position: absolute; bottom: 24px; right: 12px; z-index: 10;
+      background: rgba(20, 20, 30, 0.85);
+      backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px; padding: 10px 14px;
+      font-size: 11px; line-height: 1.6; color: #ccc;
+      font-family: 'SF Mono', 'Consolas', monospace;
+      pointer-events: none;
+      display: none;
+    }
+    #satAttribs.visible { display: block; }
+    #satAttribs .attr-label { color: #888; }
+    #satAttribs .attr-value { color: #eee; }
+
+    /* Top-right button group */
+    .top-right-btns {
+      position: fixed; top: 12px; right: 12px; z-index: 12;
+      display: flex; gap: 8px; align-items: flex-start;
+    }
+    .top-right-btns button.circle-btn {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: rgba(20, 20, 30, 0.88);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.15);
+      color: #ccc; font-size: 18px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .top-right-btns button.circle-btn:hover { background: rgba(37,99,235,0.5); color: #fff; }
+    #infoBtn { font-weight: 700; font-style: italic; font-family: Georgia, 'Times New Roman', serif; }
+    #layersBtn { font-size: 16px; }
+
+    /* Layers dropdown */
+    #layersDropdown {
+      position: absolute; top: 44px; right: 0; z-index: 13;
+      background: rgba(20, 20, 30, 0.92);
+      backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px; padding: 10px 14px;
+      display: none; min-width: 170px;
+    }
+    #layersDropdown.open { display: block; }
+
+    /* Info popup overlay */
+    #infoOverlay {
+      display: none; position: absolute; inset: 0; z-index: 20;
+      background: rgba(0,0,0,0.5);
+    }
+    #infoOverlay.open { display: flex; align-items: center; justify-content: center; }
+
+    #infoPanel {
+      width: 520px; max-width: calc(100vw - 40px);
+      max-height: calc(100vh - 60px); overflow-y: auto;
+      background: rgba(20, 20, 30, 0.95);
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px; padding: 24px;
+      font-size: 13px; line-height: 1.7; color: #bbb;
+    }
+    #infoPanel h2 {
+      font-size: 16px; color: #eee; margin: 0 0 14px 0;
+    }
+    #infoPanel h3 {
+      font-size: 14px; color: #ddd; margin: 18px 0 6px 0;
+    }
+    #infoPanel p { margin: 0 0 10px 0; }
+    #infoPanel .algo-step {
+      padding: 5px 0 5px 14px;
+      border-left: 2px solid rgba(37,99,235,0.4);
+      margin: 5px 0; color: #aaa;
+    }
+    #infoClose {
+      float: right; background: none; border: none;
+      color: #888; font-size: 20px; cursor: pointer; padding: 0 4px;
+      line-height: 1;
+    }
+    #infoClose:hover { color: #fff; }
+
+    #copyright {
+      position: absolute; bottom: 6px; right: 10px; z-index: 10;
+      font-size: 11px; color: rgba(200,200,200,0.5);
+      pointer-events: none; user-select: none;
+    }
+  </style>
+</head>
+<body>
+
+<div id="cesiumContainer"></div>
+<div id="satAttribs"></div>
+<div id="copyright">&copy; Feng Chi (David), Hsu 2026</div>
+
+<button id="toggleBtn" type="button">&#9776;</button>
+<div id="controlPanel">
+
+  <div class="section-title">Satellite</div>
+  <label for="satQuery">Search</label>
+  <div class="search-row">
+    <input id="satQuery" type="text" value="25544" placeholder="NORAD ID or name" />
+    <button class="secondary" id="searchBtn" type="button">Search</button>
+  </div>
+  <label for="satSelect">Select satellite</label>
+  <select id="satSelect"></select>
+
+  <div class="section-title">Target</div>
+  <div style="font-size:10px;color:#666;margin-bottom:4px;">Click on globe to set target, or pick a city:</div>
+  <label for="locationPreset">Quick select</label>
+  <select id="locationPreset">
+    <option value="">-- select a city --</option>
+    <option value="40.7128,-74.0060">New York</option>
+    <option value="51.5074,-0.1278">London</option>
+    <option value="48.8566,2.3522">Paris</option>
+    <option value="35.6762,139.6503">Tokyo</option>
+    <option value="25.0330,121.5654">Taipei</option>
+    <option value="39.7392,-104.9903">Denver</option>
+    <option value="37.7749,-122.4194">San Francisco</option>
+    <option value="-33.8688,151.2093">Sydney</option>
+    <option value="55.7558,37.6173">Moscow</option>
+    <option value="28.6139,77.2090">New Delhi</option>
+    <option value="-22.9068,-43.1729">Rio de Janeiro</option>
+    <option value="1.3521,103.8198">Singapore</option>
+    <option value="30.0444,31.2357">Cairo</option>
+    <option value="64.1466,-21.9426">Reykjavik</option>
+  </select>
+  <div class="inline-row">
+    <div>
+      <label for="latInput">Latitude</label>
+      <input id="latInput" type="number" step="0.0001" value="39.7392" />
+    </div>
+    <div>
+      <label for="lonInput">Longitude</label>
+      <input id="lonInput" type="number" step="0.0001" value="-104.9903" />
+    </div>
+  </div>
+
+  <div class="inline-row">
+    <div style="flex:2">
+      <label for="dateInput">Start date</label>
+      <input id="dateInput" type="date" />
+    </div>
+    <div style="flex:1">
+      <label for="daysInput">Days</label>
+      <input id="daysInput" type="number" min="1" max="14" step="1" value="1" />
+    </div>
+  </div>
+
+  <div class="section-title">Sensor</div>
+  <div class="inline-row">
+    <div>
+      <label for="offnadirInput">Max off-nadir (&deg;)</label>
+      <input id="offnadirInput" type="number" step="0.1" value="55" />
+    </div>
+    <div>
+      <label for="swathInput">Swath (km)</label>
+      <input id="swathInput" type="number" step="1" value="" />
+    </div>
+  </div>
+  <div style="font-size:10px;color:#666;margin-top:2px;">Ref alt: <span id="refAltLabel">700</span> km</div>
+
+  <button class="primary" id="predictBtn" type="button">Predict Overpasses</button>
+
+  <div class="section-title">Passes</div>
+  <select id="dayNightFilter" style="width:100%;margin-bottom:6px;">
+    <option value="all">All</option>
+    <option value="day">Day only</option>
+    <option value="night">Night only</option>
+  </select>
+  <div id="passList"></div>
+
+  <div id="status"></div>
+</div>
+
+<div class="top-right-btns">
+  <div style="position:relative;">
+    <button id="layersBtn" class="circle-btn" type="button" title="Layers">&#9776;</button>
+    <div id="layersDropdown" class="layer-toggles">
+      <label><input type="checkbox" id="layerOrbit" checked /> Orbital track</label>
+      <label><input type="checkbox" id="layerGround" checked /> Ground track</label>
+      <label><input type="checkbox" id="layerSwath" checked /> Swath coverage</label>
+      <label><input type="checkbox" id="layerScanline" checked /> Scan line</label>
+      <label><input type="checkbox" id="layerArrow" checked /> Direction arrow</label>
+      <label><input type="checkbox" id="layerAttribs" checked /> Sat attributes</label>
+    </div>
+  </div>
+  <button id="infoBtn" class="circle-btn" type="button">i</button>
+</div>
+
+<div id="infoOverlay">
+  <div id="infoPanel">
+    <button id="infoClose" type="button">&#10005;</button>
+    <h2>Target-Centric Satellite Observation Predictor</h2>
+
+    <h3>What is this?</h3>
+    <p>
+      Given a ground location and a satellite, this tool predicts when the
+      satellite's sensor can actually <em>observe</em> that target &mdash;
+      not merely pass overhead.
+    </p>
+
+    <h3>How it differs from standard overpass prediction</h3>
+    <p>
+      Conventional overpass predictors (e.g. N2YO, Heavens-Above) compute
+      <strong>visibility windows</strong>: time ranges when a satellite is above
+      a minimum elevation angle from the observer. This answers "when can I
+      <em>see</em> the satellite?" &mdash; useful for visual observers and
+      radio operators.
+    </p>
+    <p>
+      This tool answers a different question: <strong>"when does the satellite's
+      sensor footprint cross my target?"</strong> It models the sensor's
+      geometry (swath width, off-nadir pointing capability) and finds the
+      precise moment the target falls within the sensor's observable area.
+      This is what matters for Earth observation, remote sensing, and
+      satellite imagery tasking.
+    </p>
+
+    <h3>The algorithm: bearing-convergence</h3>
+    <p>
+      Rather than sweeping a time grid for elevation crossings, the predictor
+      uses an iterative bearing-convergence method:
+    </p>
+    <div class="algo-step">
+      <strong>1. Propagate</strong> &mdash; Advance the satellite position
+      forward in time using SGP4/SDP4 orbital propagation from TLE data.
+    </div>
+    <div class="algo-step">
+      <strong>2. Compute bearing angle</strong> &mdash; Calculate the angle
+      between the satellite's velocity vector and the direction from satellite
+      to the ground target. When this angle is exactly 90&deg;, the satellite
+      is at its closest approach to the target.
+    </div>
+    <div class="algo-step">
+      <strong>3. Detect zero-crossing</strong> &mdash; Monitor the bearing
+      difference (angle &minus; 90&deg;). When it changes sign, the satellite
+      has passed the point of closest approach.
+    </div>
+    <div class="algo-step">
+      <strong>4. Bisect and converge</strong> &mdash; Reverse the time step
+      direction and shrink by 20&times;. Repeat until the bearing converges
+      below a precision threshold (0.0001&deg;), pinpointing the exact
+      overpass time.
+    </div>
+    <div class="algo-step">
+      <strong>5. Sensor filtering</strong> &mdash; At the converged time,
+      compute the ground distance and off-nadir scan angle. Apply the sensor
+      model constraints to determine if the target is actually observable.
+    </div>
+
+    <h3>Sensor models</h3>
+    <p>
+      <strong>Pushbroom</strong> &mdash; Models a wide-swath scanning sensor
+      (e.g. VIIRS, MODIS). The target is observable if the ground distance
+      is within half the swath width (default 3,000 km). This is the legacy
+      mode and captures most polar-orbiting imager passes.
+    </p>
+    <p>
+      <strong>Off-Nadir</strong> &mdash; Adds a scan angle constraint on top
+      of swath filtering. The target must be both within the swath
+      <em>and</em> within the maximum off-nadir pointing angle (default
+      30&deg;). This models agile sensors that can point but have a limited
+      look angle (e.g. high-resolution commercial imagers).
+    </p>
+
+    <h3>Visualization</h3>
+    <p>
+      <strong>Orbit track</strong> (white line at altitude) &mdash; One full
+      orbital period (~90 min) of the satellite's 3D trajectory, centered on
+      the predicted pass time.
+    </p>
+    <p>
+      <strong>Ground track</strong> (cyan line on surface) &mdash; The
+      sub-satellite point traced on the Earth's surface.
+    </p>
+    <p>
+      <strong>Swath footprint</strong> (cyan ribbon) &mdash; The sensor's
+      ground coverage corridor along the track, sized by the configured
+      swath width.
+    </p>
+    <p>
+      <strong>Day/night</strong> &mdash; Globe lighting and terminator line
+      are set to the predicted pass time, showing whether the observation
+      occurs in daylight or darkness.
+    </p>
+  </div>
+</div>
+
+<script>
+/* ===========================================================
+   Target-Centric Satellite Observation Platform — CesiumJS UI
+   =========================================================== */
+(function () {
+  'use strict';
+
+  /* ---- Globals ---- */
+  const API = '/api';
+  let currentPasses = [];
+  let currentTLE = null;
+  let currentSwathKm = 3000;
+  let currentSatLabel = 'SAT';
+  let targetEntity = null;
+  let trackEntities = { orbit: [], ground: [], swath: [], scanline: [], arrow: [], marker: [] };
+  let terminatorEntity = null;
+  let satelliteJsLoaded = false;
+
+  /* ---- Cesium Viewer ---- */
+  // No Cesium Ion token needed — using open-source imagery providers
+  Cesium.Ion.defaultAccessToken = undefined;
+
+  const viewer = new Cesium.Viewer('cesiumContainer', {
+    baseLayer: new Cesium.ImageryLayer(
+      new Cesium.UrlTemplateImageryProvider({
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+        credit: 'Esri',
+      })
+    ),
+    terrainProvider: undefined,
+    baseLayerPicker: false,
+    geocoder: false,
+    homeButton: false,
+    sceneModePicker: false,
+    navigationHelpButton: false,
+    animation: false,
+    timeline: false,
+    fullscreenButton: false,
+    vrButton: false,
+    infoBox: false,
+    selectionIndicator: false,
+    shadows: false,
+    shouldAnimate: false,
+  });
+  viewer.scene.globe.enableLighting = true;
+  /* Keep day/night shading at all zoom levels (default fades out when zoomed in) */
+  viewer.scene.globe.nightFadeOutDistance = 0;
+  viewer.scene.globe.nightFadeInDistance = 0;
+
+  /* ---- DOM References ---- */
+  const $toggleBtn    = document.getElementById('toggleBtn');
+  const $controlPanel = document.getElementById('controlPanel');
+  const $satQuery     = document.getElementById('satQuery');
+  const $searchBtn    = document.getElementById('searchBtn');
+  const $satSelect    = document.getElementById('satSelect');
+  const $locationPreset = document.getElementById('locationPreset');
+  const $latInput     = document.getElementById('latInput');
+  const $lonInput     = document.getElementById('lonInput');
+  const $dateInput    = document.getElementById('dateInput');
+  const $daysInput    = document.getElementById('daysInput');
+  const $offnadirInput= document.getElementById('offnadirInput');
+  const $swathInput   = document.getElementById('swathInput');
+  const $refAltLabel  = document.getElementById('refAltLabel');
+  const $predictBtn   = document.getElementById('predictBtn');
+  const $passList     = document.getElementById('passList');
+  const $dayNightFilter = document.getElementById('dayNightFilter');
+  const $status       = document.getElementById('status');
+
+  /* ---- Panel toggle ---- */
+  $toggleBtn.addEventListener('click', function () {
+    $controlPanel.classList.toggle('collapsed');
+  });
+
+  /* ---- Info popup ---- */
+  var $infoBtn = document.getElementById('infoBtn');
+  var $infoOverlay = document.getElementById('infoOverlay');
+  var $infoClose = document.getElementById('infoClose');
+  $infoBtn.addEventListener('click', function () {
+    $infoOverlay.classList.add('open');
+  });
+  $infoClose.addEventListener('click', function () {
+    $infoOverlay.classList.remove('open');
+  });
+  $infoOverlay.addEventListener('click', function (e) {
+    if (e.target === $infoOverlay) $infoOverlay.classList.remove('open');
+  });
+
+  /* ---- Spherical off-nadir <-> swath conversion ---- */
+  var EARTH_R = 6371.0; // km
+  var refAltKm = 700;   // default reference altitude, updated from predictions
+
+  function offnadirToSwath(thetaDeg, altKm) {
+    var R = EARTH_R, h = altKm;
+    var theta = thetaDeg * Math.PI / 180;
+    var sinGamma = (R + h) / R * Math.sin(theta);
+    if (sinGamma >= 1) return Infinity;
+    var gamma = Math.PI - Math.asin(sinGamma); /* obtuse: opposite longest side R+h */
+    var alpha = Math.PI - theta - gamma;
+    return 2 * R * alpha;
+  }
+
+  function swathToOffnadir(swathKm, altKm) {
+    var R = EARTH_R, h = altKm;
+    var alpha = (swathKm / 2) / R;
+    var sg = Math.sqrt(R * R + (R + h) * (R + h) - 2 * R * (R + h) * Math.cos(alpha));
+    var sinTheta = R * Math.sin(alpha) / sg;
+    if (sinTheta >= 1) return 90;
+    return Math.asin(sinTheta) * 180 / Math.PI;
+  }
+
+  function updateRefAlt(altKm) {
+    refAltKm = altKm;
+    $refAltLabel.textContent = Math.round(altKm);
+  }
+
+  /* Initialize swath from default off-nadir */
+  $swathInput.value = Math.round(offnadirToSwath(parseFloat($offnadirInput.value), refAltKm));
+
+  var _syncLock = false;
+  $offnadirInput.addEventListener('input', function () {
+    if (_syncLock) return;
+    _syncLock = true;
+    var deg = parseFloat($offnadirInput.value);
+    if (!isNaN(deg) && deg > 0 && deg < 90) {
+      $swathInput.value = Math.round(offnadirToSwath(deg, refAltKm));
+    }
+    _syncLock = false;
+  });
+  $swathInput.addEventListener('input', function () {
+    if (_syncLock) return;
+    _syncLock = true;
+    var km = parseFloat($swathInput.value);
+    if (!isNaN(km) && km > 0) {
+      $offnadirInput.value = swathToOffnadir(km, refAltKm).toFixed(1);
+    }
+    _syncLock = false;
+  });
+
+  /* ---- Status helper ---- */
+  function setStatus(msg) {
+    $status.textContent = msg || '';
+  }
+
+  /* ---- Click-to-set target on globe ---- */
+  const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+  handler.setInputAction(function (click) {
+    var cartesian = viewer.camera.pickEllipsoid(click.position, viewer.scene.globe.ellipsoid);
+    if (!cartesian) return;
+    var carto = Cesium.Cartographic.fromCartesian(cartesian);
+    var lat = Cesium.Math.toDegrees(carto.latitude);
+    var lon = Cesium.Math.toDegrees(carto.longitude);
+    $latInput.value = lat.toFixed(4);
+    $lonInput.value = lon.toFixed(4);
+    placeTarget(lat, lon);
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+  /* ---- Location preset ---- */
+  $locationPreset.addEventListener('change', function () {
+    var val = $locationPreset.value;
+    if (!val) return;
+    var parts = val.split(',');
+    var lat = parseFloat(parts[0]);
+    var lon = parseFloat(parts[1]);
+    $latInput.value = lat.toFixed(4);
+    $lonInput.value = lon.toFixed(4);
+    placeTarget(lat, lon);
+  });
+
+  /* ---- Place target marker ---- */
+  function placeTarget(lat, lon) {
+    if (targetEntity) {
+      viewer.entities.remove(targetEntity);
+      targetEntity = null;
+    }
+    targetEntity = viewer.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(lon, lat),
+      point: {
+        pixelSize: 10,
+        color: Cesium.Color.YELLOW,
+        outlineColor: Cesium.Color.BLACK,
+        outlineWidth: 1,
+      },
+      label: {
+        text: 'Target',
+        font: '12px sans-serif',
+        fillColor: Cesium.Color.YELLOW,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        outlineWidth: 2,
+        outlineColor: Cesium.Color.BLACK,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        pixelOffset: new Cesium.Cartesian2(0, -14),
+      },
+    });
+  }
+
+  /* Sync target when user types lat/lon */
+  $latInput.addEventListener('change', function () {
+    placeTarget(parseFloat($latInput.value), parseFloat($lonInput.value));
+  });
+  $lonInput.addEventListener('change', function () {
+    placeTarget(parseFloat($latInput.value), parseFloat($lonInput.value));
+  });
+
+  /* ---- Load satellites ---- */
+  async function loadSats() {
+    var q = $satQuery.value.trim();
+    setStatus('Searching satellites...');
+    try {
+      var r = await fetch(API + '/satellites?q=' + encodeURIComponent(q) + '&limit=30');
+      var j = await r.json();
+      /* Clear dropdown safely */
+      while ($satSelect.firstChild) {
+        $satSelect.removeChild($satSelect.firstChild);
+      }
+      var items = j.items || [];
+      if (items.length === 0) {
+        var opt = document.createElement('option');
+        opt.value = '';
+        opt.textContent = '(no results)';
+        $satSelect.appendChild(opt);
+        setStatus('No satellites found.');
+        return;
+      }
+      items.forEach(function (s) {
+        var opt = document.createElement('option');
+        opt.value = String(s.norad_id);
+        opt.textContent = s.norad_id + ' ' + (s.name || '');
+        $satSelect.appendChild(opt);
+      });
+      setStatus(items.length + ' satellite(s) found.');
+    } catch (err) {
+      setStatus('Error loading satellites: ' + err.message);
+    }
+  }
+
+  $searchBtn.addEventListener('click', loadSats);
+  $satQuery.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') loadSats();
+  });
+
+  /* Autocomplete: debounced search on typing */
+  var _searchTimer = null;
+  $satQuery.addEventListener('input', function () {
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(loadSats, 300);
+  });
+
+  /* Re-enable predict button when satellite selection changes */
+  $satSelect.addEventListener('change', function () {
+    if (_predictAbort) { _predictAbort.abort(); _predictAbort = null; }
+    $predictBtn.disabled = false;
+  });
+
+  /* ---- Predict overpasses ---- */
+  var _predictAbort = null;
+  async function predict() {
+    var norad = $satSelect.value || $satQuery.value.trim();
+    if (!norad) { setStatus('Select or enter a satellite.'); return; }
+    var lat = parseFloat($latInput.value);
+    var lon = parseFloat($lonInput.value);
+    var dateVal = $dateInput.value;
+    if (!dateVal) { setStatus('Please select a date.'); return; }
+    var offnadir = parseFloat($offnadirInput.value) || 55;
+    var swath = parseFloat($swathInput.value) || 3000;
+
+    // Abort any pending prediction request
+    if (_predictAbort) _predictAbort.abort();
+    _predictAbort = new AbortController();
+    var signal = _predictAbort.signal;
+
+    $predictBtn.disabled = true;
+    setStatus('Running prediction...');
+
+    try {
+      var url = API + '/predict/overpass?norad_id=' + encodeURIComponent(norad) +
+        '&target_lat=' + lat + '&target_lon=' + lon +
+        '&start_date=' + encodeURIComponent(dateVal) +
+        '&predict_days=' + (parseInt($daysInput.value) || 1) + '&swath_km=' + swath +
+        '&max_offnadir_deg=' + offnadir;
+
+      var r = await fetch(url, { signal: signal });
+      if (!r.ok) {
+        var errText = await r.text();
+        setStatus('Prediction failed: ' + r.status + ' ' + errText);
+        return;
+      }
+      var j = await r.json();
+      currentPasses = j.passes || [];
+      currentTLE = j.tle || null;
+      currentSwathKm = j.swath_km || 3000;
+      currentSatLabel = (j.norad_id || '') + (j.name ? ' ' + j.name : '');
+
+      /* Update reference altitude from first pass for swath<->offnadir sync */
+      if (currentPasses.length > 0 && currentPasses[0].satAlt) {
+        updateRefAlt(currentPasses[0].satAlt);
+      }
+
+      renderPassList();
+
+      if (currentPasses.length > 0) {
+        setStatus(currentPasses.length + ' pass(es) found.');
+        selectPass(0);
+      } else if (j.reachable === false) {
+        var incl = j.inclination_deg != null ? j.inclination_deg.toFixed(1) : '?';
+        var margin = j.offnadir_margin_deg != null ? j.offnadir_margin_deg.toFixed(1) : '?';
+        var maxLat = j.max_latitude_deg != null ? j.max_latitude_deg.toFixed(1) : '?';
+        var alt = j.apogee_alt_km != null ? Math.round(j.apogee_alt_km) : '?';
+        var offnadir = (parseFloat($offnadirInput.value) || 55).toFixed(1);
+        setStatus(
+          'Unreachable \u2014 Inclination ' + incl + '\u00B0 + ' +
+          margin + '\u00B0 viewing margin (' + offnadir +
+          '\u00B0 off-nadir at ' + alt + ' km) = \u00B1' +
+          maxLat + '\u00B0 max observable latitude. ' +
+          'Target is beyond coverage.'
+        );
+        clearTrack();
+      } else {
+        setStatus('No observable passes within ' +
+          (parseInt($daysInput.value) || 1) + ' day(s) for this target.');
+        clearTrack();
+      }
+    } catch (err) {
+      if (err.name === 'AbortError') return; // aborted by new selection
+      setStatus('Prediction error: ' + err.message);
+    } finally {
+      $predictBtn.disabled = false;
+    }
+  }
+
+  $predictBtn.addEventListener('click', predict);
+
+  /* ---- Render pass list ---- */
+  function renderPassList() {
+    while ($passList.firstChild) {
+      $passList.removeChild($passList.firstChild);
+    }
+    var filter = $dayNightFilter.value;
+    currentPasses.forEach(function (pass, idx) {
+      if (filter === 'day' && pass.dayNight !== 1) return;
+      if (filter === 'night' && pass.dayNight !== 0) return;
+
+      var div = document.createElement('div');
+      div.className = 'pass-item';
+      div.setAttribute('data-index', String(idx));
+
+      var sunIcon = pass.dayNight === 1 ? '\u2600\uFE0F' : '\uD83C\uDF19';
+      var title = document.createElement('div');
+      title.className = 'pass-title';
+      title.textContent = sunIcon + ' Pass ' + (idx + 1);
+      div.appendChild(title);
+
+      var times = document.createElement('div');
+      times.className = 'pass-times';
+      var utcTime = pass.timeEndUTC || '';
+      var locTime = pass.timeEndLOC || '';
+      var utcLabel = document.createElement('span');
+      utcLabel.textContent = 'UTC ';
+      times.appendChild(utcLabel);
+      times.appendChild(document.createTextNode(utcTime));
+      if (locTime) {
+        times.appendChild(document.createElement('br'));
+        var locLabel = document.createElement('span');
+        locLabel.textContent = 'LOC ';
+        times.appendChild(locLabel);
+        times.appendChild(document.createTextNode(locTime));
+      }
+      div.appendChild(times);
+
+      var details = document.createElement('div');
+      details.className = 'pass-details';
+      var scanAngle = pass.scanAngle != null ? pass.scanAngle.toFixed(1) : '?';
+      var distance = pass.distance != null ? pass.distance.toFixed(0) : '?';
+      var satAlt = pass.satAlt != null ? Number(pass.satAlt).toFixed(0) : '?';
+      var orbitDir = pass.ascending === 1 ? 'Asc \u2191' : 'Desc \u2193';
+      var dayOrNight = pass.dayNight === 1 ? 'Day' : 'Night';
+      var sunLabel = dayOrNight;
+      if (pass.solarElevation != null) {
+        sunLabel = 'SolZ: ' + (90 - pass.solarElevation).toFixed(0) + '\u00B0 (' + dayOrNight + ')';
+      }
+      var cells = [
+        'Off-nadir: ' + scanAngle + '\u00B0',
+        'Dist: ' + distance + ' km',
+        'Alt: ' + satAlt + ' km \u00B7 ' + orbitDir,
+        sunLabel,
+      ];
+      cells.forEach(function (text) {
+        var cell = document.createElement('div');
+        cell.textContent = text;
+        details.appendChild(cell);
+      });
+      div.appendChild(details);
+
+      div.addEventListener('click', function () { selectPass(idx); });
+      $passList.appendChild(div);
+    });
+  }
+
+  var _selectedIdx = -1;
+
+  $dayNightFilter.addEventListener('change', function () {
+    renderPassList();
+    /* Re-apply highlight or fall back to first visible pass */
+    var restored = false;
+    if (_selectedIdx >= 0) {
+      var el = $passList.querySelector('.pass-item[data-index="' + _selectedIdx + '"]');
+      if (el) { el.classList.add('selected'); restored = true; }
+    }
+    if (!restored) {
+      var first = $passList.querySelector('.pass-item');
+      if (first) {
+        var idx = parseInt(first.getAttribute('data-index'));
+        selectPass(idx);
+      }
+    }
+  });
+
+  /* ---- Layers button + dropdown ---- */
+  var $layersBtn = document.getElementById('layersBtn');
+  var $layersDD = document.getElementById('layersDropdown');
+  $layersBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    $layersDD.classList.toggle('open');
+  });
+  document.addEventListener('click', function (e) {
+    if (!$layersDD.contains(e.target) && e.target !== $layersBtn) {
+      $layersDD.classList.remove('open');
+    }
+  });
+
+  /* ---- Layer toggles ---- */
+  var layerMap = {
+    layerOrbit: 'orbit',
+    layerGround: 'ground',
+    layerSwath: 'swath',
+    layerScanline: 'scanline',
+    layerArrow: 'arrow',
+  };
+  Object.keys(layerMap).forEach(function (id) {
+    document.getElementById(id).addEventListener('change', function () {
+      var key = layerMap[id];
+      var show = this.checked;
+      trackEntities[key].forEach(function (ent) { ent.show = show; });
+    });
+  });
+  document.getElementById('layerAttribs').addEventListener('change', function () {
+    var $sa = document.getElementById('satAttribs');
+    if (this.checked && $sa.childNodes.length > 0) {
+      $sa.classList.add('visible');
+    } else {
+      $sa.classList.remove('visible');
+    }
+  });
+
+  /* ---- Select a pass ---- */
+  function selectPass(idx) {
+    _selectedIdx = idx;
+    /* Highlight by data-index, not DOM position */
+    var items = $passList.querySelectorAll('.pass-item');
+    items.forEach(function (el) { el.classList.remove('selected'); });
+    var target = $passList.querySelector('.pass-item[data-index="' + idx + '"]');
+    if (target) target.classList.add('selected');
+
+    var pass = currentPasses[idx];
+    if (!pass) return;
+
+    /* Convert Julian date to Cesium JulianDate.
+       The legacy predictor stores timeEndUTC_J as a Julian Date number.
+       Julian Date 2451545.0 = 2000-01-01T12:00:00Z (J2000 epoch).
+    */
+    var jd = pass.timeEndUTC_J;
+    if (jd) {
+      /* Convert JD to JS Date:
+         JD 2440587.5 = 1970-01-01T00:00:00Z (Unix epoch) */
+      var msFromUnix = (jd - 2440587.5) * 86400000;
+      var jsDate = new Date(msFromUnix);
+      var cesiumTime = Cesium.JulianDate.fromDate(jsDate);
+      viewer.clock.currentTime = cesiumTime;
+      viewer.clock.shouldAnimate = false;
+    }
+
+    renderOrbit(pass);
+    updateTerminator();
+  }
+
+  /* ---- Clear orbit track entities ---- */
+  function clearTrack() {
+    Object.keys(trackEntities).forEach(function (key) {
+      trackEntities[key].forEach(function (ent) { viewer.entities.remove(ent); });
+      trackEntities[key] = [];
+    });
+    var $sa = document.getElementById('satAttribs');
+    $sa.classList.remove('visible');
+    $sa.textContent = '';
+  }
+
+  /* ---- Render orbit track and swath ---- */
+  function renderOrbit(pass) {
+    clearTrack();
+    if (!currentTLE) {
+      setStatus('No TLE available for orbit rendering.');
+      return;
+    }
+    if (!satelliteJsLoaded) {
+      /* Dynamically load satellite.js from CDN */
+      var script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/satellite.js@5.0.0/dist/satellite.min.js';
+      script.onload = function () {
+        satelliteJsLoaded = true;
+        renderOrbitWithSgp4(pass);
+      };
+      script.onerror = function () {
+        setStatus('Failed to load satellite.js from CDN.');
+      };
+      document.head.appendChild(script);
+      return;
+    }
+    renderOrbitWithSgp4(pass);
+  }
+
+  function renderOrbitWithSgp4(pass) {
+    var satrec = satellite.twoline2satrec(currentTLE.line1, currentTLE.line2);
+
+    /* Parse mean motion from TLE line2 to compute orbital period */
+    var meanMotionStr = currentTLE.line2.substring(52, 63).trim();
+    var meanMotion = parseFloat(meanMotionStr);
+    if (!meanMotion || meanMotion <= 0) {
+      setStatus('Invalid mean motion in TLE.');
+      return;
+    }
+    var periodMinutes = 1440.0 / meanMotion;
+    var halfPeriodSec = (periodMinutes * 60) / 2;
+
+    /* Determine center time from pass Julian date */
+    var jd = pass.timeEndUTC_J;
+    var centerMs = (jd - 2440587.5) * 86400000;
+    var centerDate = new Date(centerMs);
+
+    /* Sample positions every 60 seconds for one full orbit */
+    var stepSec = 60;
+    var positions = [];
+    var closestIdx = 0;
+    var closestDist = Infinity;
+
+    for (var t = -halfPeriodSec; t <= halfPeriodSec; t += stepSec) {
+      var sampleDate = new Date(centerDate.getTime() + t * 1000);
+      var posVel = satellite.propagate(satrec, sampleDate);
+      if (!posVel.position || posVel.position === false) continue;
+
+      var gmst = satellite.gstime(sampleDate);
+      var geod = satellite.eciToGeodetic(posVel.position, gmst);
+
+      var lonDeg = Cesium.Math.toDegrees(geod.longitude);
+      var latDeg = Cesium.Math.toDegrees(geod.latitude);
+      var altKm = geod.height;
+
+      /* Also compute ECEF directly (km -> m) for geometrically exact
+         3D rendering.  ECI→ECF is a pure rotation, no geodetic
+         approximation involved. */
+      var ecf = satellite.eciToEcf(posVel.position, gmst);
+      var ecfCart = new Cesium.Cartesian3(ecf.x * 1000, ecf.y * 1000, ecf.z * 1000);
+
+      positions.push({
+        lon: lonDeg,
+        lat: latDeg,
+        alt: altKm,
+        ecef: ecfCart,
+        time: sampleDate,
+        tOffset: t,
+      });
+
+      /* Find closest sample to pass time */
+      var abst = Math.abs(t);
+      if (abst < closestDist) {
+        closestDist = abst;
+        closestIdx = positions.length - 1;
+      }
+    }
+
+    if (positions.length < 2) {
+      setStatus('Could not propagate orbit for this pass.');
+      return;
+    }
+
+    /* Split at antimeridian crossings */
+    var segments = splitAtAntimeridian(positions);
+
+    /* Draw ground track: cyan polyline per segment.
+       Project satellite ECEF positions radially (toward Earth's center) onto
+       the WGS84 ellipsoid.  Using ECEF directly (instead of geodetic lat/lon
+       at height 0) guarantees the ground point, satellite, and Earth's center
+       are collinear — so orbit and ground track share the same orbital plane. */
+    var WGS84_A = 6378137.0;          // semi-major axis (m)
+    var WGS84_B = 6356752.3142451793; // semi-minor axis (m)
+    var A2 = WGS84_A * WGS84_A;
+    var B2 = WGS84_B * WGS84_B;
+
+    function ecefToGeocentricSurface(cart) {
+      /* Scale a Cartesian3 radially to the WGS84 ellipsoid surface.
+         For direction d = normalize(cart), the surface point is t*d where
+         t = 1 / sqrt(dx²/a² + dy²/a² + dz²/b²). */
+      var mag = Cesium.Cartesian3.magnitude(cart);
+      if (mag === 0) return cart;
+      var dx = cart.x / mag, dy = cart.y / mag, dz = cart.z / mag;
+      var t = 1.0 / Math.sqrt((dx * dx + dy * dy) / A2 + dz * dz / B2);
+      return new Cesium.Cartesian3(dx * t, dy * t, dz * t);
+    }
+
+    segments.forEach(function (seg) {
+      var cartesians = [];
+      seg.forEach(function (p) {
+        cartesians.push(ecefToGeocentricSurface(p.ecef));
+      });
+      var ent = viewer.entities.add({
+        polyline: {
+          positions: cartesians,
+          width: 2,
+          material: Cesium.Color.CYAN.withAlpha(0.5),
+        },
+      });
+      trackEntities.ground.push(ent);
+    });
+
+    /* Draw orbit track at altitude: white polyline per segment.
+       Uses ECEF positions directly from the propagator — no geodetic
+       round-trip, so the orbit is geometrically exact. */
+    segments.forEach(function (seg) {
+      var cartesians = [];
+      seg.forEach(function (p) {
+        cartesians.push(p.ecef);
+      });
+      var ent = viewer.entities.add({
+        polyline: {
+          positions: cartesians,
+          width: 2,
+          material: Cesium.Color.WHITE.withAlpha(0.8),
+        },
+      });
+      trackEntities.orbit.push(ent);
+    });
+
+    /* Draw swath as quad strips (avoids triangulation artifacts on long thin polygons) */
+    var maxOffnadirRad = toRad(parseFloat($offnadirInput.value) || 55);
+
+    segments.forEach(function (seg) {
+      if (seg.length < 2) return;
+      var lefts = [];
+      var rights = [];
+
+      for (var i = 0; i < seg.length; i++) {
+        var R = 6371.0;
+        var h = seg[i].alt;
+        var sinGamma = (R + h) / R * Math.sin(maxOffnadirRad);
+        var halfSwathDeg;
+        if (sinGamma >= 1) {
+          halfSwathDeg = 10;
+        } else {
+          halfSwathDeg = toDeg(Math.asin(sinGamma) - maxOffnadirRad);
+        }
+
+        var nextIdx = Math.min(i + 1, seg.length - 1);
+        var prevIdx = Math.max(i - 1, 0);
+        var bearing = getBearing(seg[prevIdx].lat, seg[prevIdx].lon,
+                                 seg[nextIdx].lat, seg[nextIdx].lon);
+
+        lefts.push(offsetPoint(seg[i].lat, seg[i].lon, halfSwathDeg, bearing - 90));
+        rights.push(offsetPoint(seg[i].lat, seg[i].lon, halfSwathDeg, bearing + 90));
+      }
+
+      /* Emit one small quad polygon per pair of consecutive points */
+      for (var i = 0; i < lefts.length - 1; i++) {
+        var quad = [
+          lefts[i].lon, lefts[i].lat,
+          lefts[i + 1].lon, lefts[i + 1].lat,
+          rights[i + 1].lon, rights[i + 1].lat,
+          rights[i].lon, rights[i].lat,
+        ];
+        trackEntities.swath.push(viewer.entities.add({
+          polygon: {
+            hierarchy: Cesium.Cartesian3.fromDegreesArray(quad),
+            material: Cesium.Color.CYAN.withAlpha(0.12),
+            height: 0,
+          },
+        }));
+      }
+    });
+
+    /* Propagate to exact pass time for precise satellite position */
+    var exactPosVel = satellite.propagate(satrec, centerDate);
+    var exactGmst = satellite.gstime(centerDate);
+    var exactGeod = satellite.eciToGeodetic(exactPosVel.position, exactGmst);
+    var satPos = {
+      lon: Cesium.Math.toDegrees(exactGeod.longitude),
+      lat: Cesium.Math.toDegrees(exactGeod.latitude),
+      alt: exactGeod.height,
+    };
+
+    /* Satellite position marker at exact pass time */
+    var satEnt = viewer.entities.add({
+      position: Cesium.Cartesian3.fromDegrees(satPos.lon, satPos.lat, satPos.alt * 1000),
+      point: {
+        pixelSize: 10,
+        color: Cesium.Color.RED,
+        outlineColor: Cesium.Color.WHITE,
+        outlineWidth: 1,
+      },
+      label: {
+        text: currentSatLabel,
+        font: '11px sans-serif',
+        fillColor: Cesium.Color.RED,
+        style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+        outlineWidth: 2,
+        outlineColor: Cesium.Color.BLACK,
+        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+        pixelOffset: new Cesium.Cartesian2(0, -14),
+      },
+    });
+    trackEntities.marker.push(satEnt);
+
+    /* Scanline: red line perpendicular to ground track at exact pass time */
+    /* Propagate ±5 sec for precise track bearing at pass time */
+    var dtSec = 5;
+    var prevDate = new Date(centerDate.getTime() - dtSec * 1000);
+    var nextDate = new Date(centerDate.getTime() + dtSec * 1000);
+    var prevPV = satellite.propagate(satrec, prevDate);
+    var nextPV = satellite.propagate(satrec, nextDate);
+    var prevGeod = satellite.eciToGeodetic(prevPV.position, satellite.gstime(prevDate));
+    var nextGeod = satellite.eciToGeodetic(nextPV.position, satellite.gstime(nextDate));
+    var trackBearing = getBearing(
+      Cesium.Math.toDegrees(prevGeod.latitude), Cesium.Math.toDegrees(prevGeod.longitude),
+      Cesium.Math.toDegrees(nextGeod.latitude), Cesium.Math.toDegrees(nextGeod.longitude));
+    var R = 6371.0;
+    var h = satPos.alt;
+    var sinG = (R + h) / R * Math.sin(maxOffnadirRad);
+    var scanHalfDeg = (sinG >= 1) ? 10 : toDeg(Math.asin(sinG) - maxOffnadirRad);
+    var scanLeft = offsetPoint(satPos.lat, satPos.lon, scanHalfDeg, trackBearing - 90);
+    var scanRight = offsetPoint(satPos.lat, satPos.lon, scanHalfDeg, trackBearing + 90);
+    trackEntities.scanline.push(viewer.entities.add({
+      polyline: {
+        positions: Cesium.Cartesian3.fromDegreesArrayHeights([
+          scanLeft.lon, scanLeft.lat, 0,
+          scanRight.lon, scanRight.lat, 0,
+        ]),
+        width: 2,
+        material: Cesium.Color.MAGENTA.withAlpha(0.5),
+      },
+    }));
+
+    /* Direction arrow: short arrow from satellite position toward movement */
+    var arrowTip = offsetPoint(satPos.lat, satPos.lon, 3.0, trackBearing);
+    trackEntities.arrow.push(viewer.entities.add({
+      polyline: {
+        positions: Cesium.Cartesian3.fromDegreesArrayHeights([
+          satPos.lon, satPos.lat, 0,
+          arrowTip.lon, arrowTip.lat, 0,
+        ]),
+        width: 10,
+        material: new Cesium.PolylineArrowMaterialProperty(Cesium.Color.CYAN.withAlpha(0.7)),
+      },
+    }));
+
+    /* Satellite attributes HUD */
+    var tgtLat = parseFloat($latInput.value);
+    var tgtLon = parseFloat($lonInput.value);
+    var prevLat = Cesium.Math.toDegrees(prevGeod.latitude);
+    var prevLon = Cesium.Math.toDegrees(prevGeod.longitude);
+    var nextLat = Cesium.Math.toDegrees(nextGeod.latitude);
+    var nextLon = Cesium.Math.toDegrees(nextGeod.longitude);
+    /* Haversine ground distance between ±dtSec positions */
+    var dLat = toRad(nextLat - prevLat);
+    var dLon = toRad(nextLon - prevLon);
+    var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(toRad(prevLat)) * Math.cos(toRad(nextLat)) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    var groundDistKm = 6371.0 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    var groundSpeedKmS = groundDistKm / (2 * dtSec);
+    var $sa = document.getElementById('satAttribs');
+    while ($sa.firstChild) $sa.removeChild($sa.firstChild);
+    var lines = [
+      ['Lat', satPos.lat.toFixed(4) + '\u00B0'],
+      ['Lon', satPos.lon.toFixed(4) + '\u00B0'],
+      ['Alt', satPos.alt.toFixed(1) + ' km'],
+      ['Heading', trackBearing.toFixed(1) + '\u00B0'],
+      ['Gnd Speed', (groundSpeedKmS.toFixed(2)) + ' km/s'],
+      ['Off-nadir', pass.scanAngle != null ? pass.scanAngle.toFixed(1) + '\u00B0' : '?'],
+      ['Distance', pass.distance != null ? pass.distance.toFixed(1) + ' km' : '?'],
+      ['Time (UTC)', pass.timeEndUTC || '?'],
+    ];
+    lines.forEach(function (pair) {
+      var row = document.createElement('div');
+      var lbl = document.createElement('span');
+      lbl.className = 'attr-label';
+      lbl.textContent = pair[0] + ': ';
+      var val = document.createElement('span');
+      val.className = 'attr-value';
+      val.textContent = pair[1];
+      row.appendChild(lbl);
+      row.appendChild(val);
+      $sa.appendChild(row);
+    });
+    if (document.getElementById('layerAttribs').checked) {
+      $sa.classList.add('visible');
+    }
+
+    /* Apply layer visibility from toggles */
+    Object.keys(layerMap).forEach(function (id) {
+      var show = document.getElementById(id).checked;
+      trackEntities[layerMap[id]].forEach(function (ent) { ent.show = show; });
+    });
+
+    /* Fly camera to oblique view */
+    flyToObliqueView(tgtLat, tgtLon, satPos);
+  }
+
+  /* ---- Fly to oblique view ---- */
+  function flyToObliqueView(tgtLat, tgtLon, satPos) {
+    /*
+     * Use Cesium's BoundingSphere + flyToBoundingSphere so both the target
+     * (on the ground) and the satellite (at orbital altitude) are guaranteed
+     * to be inside the viewport.
+     */
+    var targetCart = Cesium.Cartesian3.fromDegrees(tgtLon, tgtLat, 0);
+    var satCart = Cesium.Cartesian3.fromDegrees(satPos.lon, satPos.lat, satPos.alt * 1000);
+
+    var sphere = Cesium.BoundingSphere.fromPoints([targetCart, satCart]);
+
+    /* Heading: look from behind the target toward the satellite */
+    var bearingToSat = getBearing(tgtLat, tgtLon, satPos.lat, satPos.lon);
+    var heading = Cesium.Math.toRadians(bearingToSat);
+    var pitch = Cesium.Math.toRadians(-35);  /* 35° above horizon */
+
+    /* Range: pull back 6x the bounding sphere radius for wide view */
+    var range = sphere.radius * 6.0;
+
+    viewer.camera.flyToBoundingSphere(sphere, {
+      offset: new Cesium.HeadingPitchRange(heading, pitch, range),
+      duration: 1.5,
+    });
+  }
+
+  /* ---- Terminator (day/night line) ---- */
+  function updateTerminator() {
+    if (terminatorEntity) {
+      viewer.entities.remove(terminatorEntity);
+      terminatorEntity = null;
+    }
+
+    var time = viewer.clock.currentTime;
+
+    /* Compute sub-solar point */
+    var sunEci = Cesium.Simon1994PlanetaryPositions.computeSunPositionInEarthInertialFrame(time);
+    var fixedMatrix = Cesium.Transforms.computeTemeToPseudoFixedMatrix(time);
+    var sunFixed = Cesium.Matrix3.multiplyByVector(fixedMatrix, sunEci, new Cesium.Cartesian3());
+
+    /* Normalize to get sub-solar unit vector */
+    var sunDir = Cesium.Cartesian3.normalize(sunFixed, new Cesium.Cartesian3());
+
+    /* Compute 360 points on the great circle 90 degrees from sub-solar point.
+       The terminator is the set of points where the angle from the sub-solar point is 90 deg.
+       We rotate the antipodal point around the sun direction axis. */
+    var numPoints = 360;
+    var terminatorCoords = [];
+
+    /* Build a local coordinate frame at the sub-solar point on the unit sphere */
+    /* The terminator circle lies on the plane perpendicular to sunDir, at the equator relative to the sun */
+    /* Find two perpendicular vectors to sunDir */
+    var up = new Cesium.Cartesian3(0, 0, 1);
+    var perp1 = Cesium.Cartesian3.cross(sunDir, up, new Cesium.Cartesian3());
+    if (Cesium.Cartesian3.magnitude(perp1) < 0.001) {
+      up = new Cesium.Cartesian3(0, 1, 0);
+      perp1 = Cesium.Cartesian3.cross(sunDir, up, new Cesium.Cartesian3());
+    }
+    perp1 = Cesium.Cartesian3.normalize(perp1, new Cesium.Cartesian3());
+    var perp2 = Cesium.Cartesian3.cross(sunDir, perp1, new Cesium.Cartesian3());
+    perp2 = Cesium.Cartesian3.normalize(perp2, new Cesium.Cartesian3());
+
+    /* Points 90 deg from sub-solar point on the unit sphere */
+    for (var i = 0; i < numPoints; i++) {
+      var angle = (2 * Math.PI * i) / numPoints;
+      /* Point on the great circle 90 deg from sun: cos(angle)*perp1 + sin(angle)*perp2 */
+      var px = Math.cos(angle) * perp1.x + Math.sin(angle) * perp2.x;
+      var py = Math.cos(angle) * perp1.y + Math.sin(angle) * perp2.y;
+      var pz = Math.cos(angle) * perp1.z + Math.sin(angle) * perp2.z;
+
+      var pt = new Cesium.Cartesian3(px * 6371000, py * 6371000, pz * 6371000);
+      var ptCarto = Cesium.Cartographic.fromCartesian(pt);
+      terminatorCoords.push(
+        Cesium.Math.toDegrees(ptCarto.longitude),
+        Cesium.Math.toDegrees(ptCarto.latitude)
+      );
+    }
+    /* Close the loop */
+    terminatorCoords.push(terminatorCoords[0], terminatorCoords[1]);
+
+    terminatorEntity = viewer.entities.add({
+      polyline: {
+        positions: Cesium.Cartesian3.fromDegreesArray(terminatorCoords),
+        width: 2,
+        material: Cesium.Color.ORANGE.withAlpha(0.6),
+        clampToGround: true,
+      },
+    });
+  }
+
+  /* ============================================================
+     Geometry Helpers
+     ============================================================ */
+
+  /** Bearing in degrees from point 1 to point 2 (all in degrees) */
+  function getBearing(lat1, lon1, lat2, lon2) {
+    var dLon = toRad(lon2 - lon1);
+    var y = Math.sin(dLon) * Math.cos(toRad(lat2));
+    var x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+            Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
+    var brng = Math.atan2(y, x);
+    return (toDeg(brng) + 360) % 360;
+  }
+
+  /** Offset a point by distDeg in bearingDeg direction */
+  function offsetPoint(lat, lon, distDeg, bearingDeg) {
+    var d = toRad(distDeg);
+    var brng = toRad(bearingDeg);
+    var lat1 = toRad(lat);
+    var lon1 = toRad(lon);
+    var lat2 = Math.asin(
+      Math.sin(lat1) * Math.cos(d) +
+      Math.cos(lat1) * Math.sin(d) * Math.cos(brng)
+    );
+    var lon2 = lon1 + Math.atan2(
+      Math.sin(brng) * Math.sin(d) * Math.cos(lat1),
+      Math.cos(d) - Math.sin(lat1) * Math.sin(lat2)
+    );
+    return { lat: toDeg(lat2), lon: toDeg(lon2) };
+  }
+
+  /** Split positions array at antimeridian crossings (|lon_delta| > 180) */
+  function splitAtAntimeridian(positions) {
+    if (positions.length === 0) return [];
+    var segments = [];
+    var current = [positions[0]];
+
+    for (var i = 1; i < positions.length; i++) {
+      var dLon = Math.abs(positions[i].lon - positions[i - 1].lon);
+      if (dLon > 180) {
+        segments.push(current);
+        current = [];
+      }
+      current.push(positions[i]);
+    }
+    if (current.length > 0) segments.push(current);
+    return segments;
+  }
+
+  function toRad(deg) { return deg * Math.PI / 180; }
+  function toDeg(rad) { return rad * 180 / Math.PI; }
+
+  /* ============================================================
+     Initialization
+     ============================================================ */
+
+  /* Set date input to today */
+  var today = new Date();
+  var yyyy = today.getFullYear();
+  var mm = String(today.getMonth() + 1).padStart(2, '0');
+  var dd = String(today.getDate()).padStart(2, '0');
+  $dateInput.value = yyyy + '-' + mm + '-' + dd;
+
+  /* Place target: try browser geolocation, fall back to Denver */
+  var DEFAULT_LAT = 39.7392, DEFAULT_LON = -104.9903;
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        placeTarget(pos.coords.latitude, pos.coords.longitude);
+      },
+      function () { placeTarget(DEFAULT_LAT, DEFAULT_LON); },
+      { timeout: 5000 }
+    );
+  } else {
+    placeTarget(DEFAULT_LAT, DEFAULT_LON);
+  }
+
+  /* Load satellites */
+  loadSats();
+
+})();
+</script>
+</body>
+</html>

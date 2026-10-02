@@ -1,0 +1,16 @@
+name = "satpredict"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+account_id = "f363e618f4b8dc5f5a3b8cb169f3ddb7"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "satpredict"
+database_id = "38d4945b-0d2c-4728-99ea-fc1e6c93b66b"
+
+[triggers]
+crons = ["0 6 * * *"]
+
+[assets]
+directory = "./public"
