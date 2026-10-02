@@ -2,13 +2,6 @@ export interface Env {
   ORBITAL_API_KEY: string;
 }
 
-export interface SatelliteSearchResult {
-  norad_id: number;
-  name: string;
-  object_type: string | null;
-  epoch_utc: string | null;
-}
-
 export interface PredictionConfig {
   coarseStepSeconds: number;
   iterationLimit: number;

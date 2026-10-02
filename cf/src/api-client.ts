@@ -25,12 +25,18 @@ async function cachedFetch(
   fetchImpl: typeof fetch
 ): Promise<Response> {
   const cache = (globalThis as any).caches?.default as Cache | undefined;
-  const req = new Request(url, { headers: { "X-Api-Key": env.ORBITAL_API_KEY } });
+  const headers = { "X-Api-Key": env.ORBITAL_API_KEY };
+  const req = new Request(url, { headers });
   if (cache) {
     const hit = await cache.match(req);
     if (hit) return hit;
   }
-  const resp = await fetchImpl(url, { headers: { "X-Api-Key": env.ORBITAL_API_KEY } });
+  let resp: Response;
+  try {
+    resp = await fetchImpl(url, { headers });
+  } catch {
+    throw new ApiError(502, "upstream unavailable");
+  }
   if (cache && resp.ok) {
     const toCache = new Response(resp.clone().body, resp);
     toCache.headers.set("Cache-Control", `max-age=${ttl}`);

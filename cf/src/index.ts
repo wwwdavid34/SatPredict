@@ -29,6 +29,7 @@ app.get("/api/satellites", async (c) => {
 // --- Latest OMM (returns raw OMM; frontend uses name/epoch) ---
 app.get("/api/tles/latest/:norad_id", async (c) => {
   const noradId = parseInt(c.req.param("norad_id"), 10);
+  if (Number.isNaN(noradId)) return c.json({ error: "invalid norad_id" }, 400);
   const omm = await getLatestOmm(c.env, noradId);
   if (!omm) return c.json({ error: "NORAD not found" }, 404);
   return c.json(omm);

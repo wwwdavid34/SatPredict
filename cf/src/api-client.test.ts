@@ -29,6 +29,11 @@ describe("getLatestOmm", () => {
     const f = vi.fn().mockResolvedValue(jsonResponse({ error: "INVALID_API_KEY" }, 403));
     await expect(getLatestOmm(env, 25544, f as any)).rejects.toMatchObject({ status: 502 });
   });
+
+  it("maps a rejected fetch (DNS/network failure) to ApiError(502)", async () => {
+    const f = vi.fn().mockRejectedValue(new TypeError("network"));
+    await expect(getLatestOmm(env, 25544, f as any)).rejects.toMatchObject({ status: 502 });
+  });
 });
 
 describe("getNearestOmm", () => {
