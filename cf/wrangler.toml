@@ -1,0 +1,11 @@
+name = "satpredict"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+account_id = "f363e618f4b8dc5f5a3b8cb169f3ddb7"
+workers_dev = true
+
+# ORBITAL_API_KEY is a Worker secret (wrangler secret put ORBITAL_API_KEY);
+# local dev reads it from cf/.dev.vars (git-ignored).
+
+[assets]
+directory = "./public"

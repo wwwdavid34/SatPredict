@@ -1,0 +1,7 @@
+# Secrets — never commit
+.dev.vars
+.dev.vars.*
+
+# Dependencies & local state
+node_modules/
+.wrangler/
