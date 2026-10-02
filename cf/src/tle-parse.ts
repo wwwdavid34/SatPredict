@@ -1,4 +1,9 @@
 import type { OmmRecord } from "./types";
+import * as satellite from "satellite.js";
+// @ts-expect-error deep import: sgp4init is not in the package's type surface
+import sgp4init from "satellite.js/lib/propagation/sgp4init";
+// @ts-expect-error deep import: jday is not in the package's type surface
+import { jday } from "satellite.js/lib/ext";
 
 const ALPHA5_MAX = 339999;
 
@@ -134,4 +139,76 @@ export function ommToTleLines(omm: OmmRecord): [string, string] | null {
   line2 += String(tleChecksum(line2));
 
   return [line1, line2];
+}
+
+/** OMM record as returned by orbital-data-api (numeric fields, UPPERCASE names). */
+export interface ApiOmm {
+  OBJECT_NAME?: string;
+  OBJECT_ID?: string;
+  NORAD_CAT_ID: number;
+  EPOCH: string;
+  MEAN_MOTION: number;
+  ECCENTRICITY: number;
+  INCLINATION: number;
+  RA_OF_ASC_NODE: number;
+  ARG_OF_PERICENTER: number;
+  MEAN_ANOMALY: number;
+  BSTAR: number;
+  MEAN_MOTION_DOT?: number;
+  MEAN_MOTION_DDOT?: number;
+  REV_AT_EPOCH?: number;
+  CLASSIFICATION_TYPE?: string;
+  ELEMENT_SET_NO?: number;
+  OBJECT_TYPE?: string;
+  ORBIT_REGIME?: string;
+}
+
+const DEG2RAD = Math.PI / 180.0;
+const XPDOTP = 1440.0 / (2.0 * Math.PI); // rev/day -> rad/min divisor (matches twoline2satrec)
+
+/**
+ * Build an SGP4 satrec directly from OMM mean elements, mirroring exactly what
+ * satellite.js's twoline2satrec does before its sgp4init call — but with no
+ * fixed-width TLE text, so NORAD IDs of any length work.
+ */
+export function omm2satrec(omm: ApiOmm): satellite.SatRec {
+  // Normalize EPOCH to a Date; append Z if the API omitted the zone.
+  const epochStr = /[Zz]|[+-]\d\d:?\d\d$/.test(omm.EPOCH) ? omm.EPOCH : omm.EPOCH + "Z";
+  const d = new Date(epochStr);
+  const secFrac = d.getUTCSeconds() + d.getUTCMilliseconds() / 1000;
+  const jdsatepoch = jday(
+    d.getUTCFullYear(),
+    d.getUTCMonth() + 1,
+    d.getUTCDate(),
+    d.getUTCHours(),
+    d.getUTCMinutes(),
+    secFrac
+  );
+
+  const satrec: any = {};
+  satrec.error = 0;
+  satrec.satnum = String(omm.NORAD_CAT_ID); // opaque string; no length limit
+  satrec.jdsatepoch = jdsatepoch;
+  satrec.no = omm.MEAN_MOTION / XPDOTP; // rad/min
+  satrec.ecco = omm.ECCENTRICITY;
+  satrec.inclo = omm.INCLINATION * DEG2RAD;
+  satrec.nodeo = omm.RA_OF_ASC_NODE * DEG2RAD;
+  satrec.argpo = omm.ARG_OF_PERICENTER * DEG2RAD;
+  satrec.mo = omm.MEAN_ANOMALY * DEG2RAD;
+  satrec.bstar = omm.BSTAR;
+
+  sgp4init(satrec, {
+    opsmode: "i",
+    satn: satrec.satnum,
+    epoch: satrec.jdsatepoch - 2433281.5,
+    xbstar: satrec.bstar,
+    xecco: satrec.ecco,
+    xargpo: satrec.argpo,
+    xinclo: satrec.inclo,
+    xmo: satrec.mo,
+    xno: satrec.no,
+    xnodeo: satrec.nodeo,
+  });
+
+  return satrec as satellite.SatRec;
 }
