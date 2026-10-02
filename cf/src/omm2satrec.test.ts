@@ -2,6 +2,13 @@ import { describe, it, expect } from "vitest";
 import * as satellite from "satellite.js";
 import { omm2satrec, type ApiOmm } from "./tle-parse";
 
+// satellite.js types `position` as `EciVec3<Kilometer> | boolean`, so a truthy
+// check alone can't narrow away the `true` literal. This guard does.
+function vec3(p: satellite.EciVec3<number> | boolean): satellite.EciVec3<number> {
+  if (typeof p === "boolean") throw new Error("expected position vector");
+  return p;
+}
+
 // Real ISS OMM captured from the API (numeric fields, uppercase names).
 const ISS_OMM: ApiOmm = {
   OBJECT_NAME: "ISS (ZARYA)",
@@ -41,9 +48,11 @@ describe("omm2satrec", () => {
     expect(a.position).toBeTruthy();
     expect(b.position).toBeTruthy();
     if (a.position && b.position) {
-      expect(a.position.x).toBeCloseTo(b.position.x, 1); // km, within ~0.1
-      expect(a.position.y).toBeCloseTo(b.position.y, 1);
-      expect(a.position.z).toBeCloseTo(b.position.z, 1);
+      const pa = vec3(a.position);
+      const pb = vec3(b.position);
+      expect(pa.x).toBeCloseTo(pb.x, 1); // km, within ~0.1
+      expect(pa.y).toBeCloseTo(pb.y, 1);
+      expect(pa.z).toBeCloseTo(pb.z, 1);
     }
   });
 

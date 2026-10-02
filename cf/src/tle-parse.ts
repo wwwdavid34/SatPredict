@@ -185,10 +185,20 @@ export function omm2satrec(omm: ApiOmm): satellite.SatRec {
     secFrac
   );
 
+  // Day-of-year (1-based) + fractional day, UTC — same shape as a TLE epoch field.
+  const yearStart = Date.UTC(d.getUTCFullYear(), 0, 1);
+  const doy = Math.floor((d.getTime() - yearStart) / 86400000) + 1;
+  const dayFrac =
+    (d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + secFrac) / 86400;
+
   const satrec: any = {};
   satrec.error = 0;
   satrec.satnum = String(omm.NORAD_CAT_ID); // opaque string; no length limit
   satrec.jdsatepoch = jdsatepoch;
+  satrec.epochyr = d.getUTCFullYear() % 100;
+  satrec.epochdays = doy + dayFrac;
+  satrec.ndot = omm.MEAN_MOTION_DOT ?? 0;
+  satrec.nddot = omm.MEAN_MOTION_DDOT ?? 0;
   satrec.no = omm.MEAN_MOTION / XPDOTP; // rad/min
   satrec.ecco = omm.ECCENTRICITY;
   satrec.inclo = omm.INCLINATION * DEG2RAD;
