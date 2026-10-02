@@ -41,19 +41,16 @@ deleted, and predictions become *more* accurate (see `nearest` below).
 - **Base:** `https://orbital-data-api.davidhsu.cc/api/v1`
 - **Auth:** `X-Api-Key: <key>` header. Required for `/gp/*` and `/catalog/*`;
   not required for `/explore/*` and `/status`.
-- **Output formats:** `?format=tle|2le|json|xml|kvn|csv`. `format=tle` returns a
-  3-line TLE (name + line1 + line2) — feeds directly into
-  `satellite.js.twoline2satrec`, no OMM→TLE conversion needed.
-- **Caveat:** NORAD IDs > 99,999 cannot use `format=tle` (5-char field). Those
-  fall back to JSON/OMM — the same OMM-only limitation the Worker already has;
-  not a regression.
+- **Output formats:** `?format=tle|2le|json|xml|kvn|csv`. We request **`format=json`
+  (OMM)** as the single source for propagation — see OMM Support below. This also
+  removes the NORAD > 99,999 limitation entirely (no 5-char TLE field involved).
 
 Endpoints used:
 
 | Purpose | Endpoint |
 |---|---|
-| Latest element set | `GET /gp/{norad}?format=tle` |
-| Element set nearest a date | `GET /gp/{norad}/nearest?epoch=<ISO date>&format=tle` |
+| Latest element set | `GET /gp/{norad}?format=json` |
+| Element set nearest a date | `GET /gp/{norad}/nearest?epoch=<ISO date>&format=json` |
 | Catalog search | `GET /catalog?search=<q>` (JSON) |
 
 ## Architecture
@@ -75,8 +72,13 @@ client → Worker route → api-client (Cache API check)
 | Worker route | Upstream call | Cache TTL |
 |---|---|---|
 | `GET /api/satellites?q=` | `GET /catalog?search=<q>` | ~1 h |
-| `GET /api/tles/latest/:norad_id` | `GET /gp/{norad}?format=tle` | ~6 h |
-| `GET /api/predict/overpass` | `GET /gp/{norad}/nearest?epoch=<start_date>&format=tle` | historical: ~immutable; current: ~6 h |
+| `GET /api/tles/latest/:norad_id` | `GET /gp/{norad}?format=json` | ~6 h |
+| `GET /api/predict/overpass` | `GET /gp/{norad}/nearest?epoch=<start_date>&format=json` | historical: ~immutable; current: ~6 h |
+
+The `/api/tles/latest` route still returns TLE lines in its JSON response for
+backward compat with the frontend; those lines are produced from the OMM via the
+existing `ommToTleLines` helper (NORAD ≤ 99,999) or omitted for higher IDs.
+Propagation itself never uses them — it uses `omm2satrec` (see OMM Support).
 
 - `/api/predict/overpass` fetches the element set **nearest the requested
   start date** rather than the latest. This lets us **delete the 7-day
@@ -84,26 +86,66 @@ client → Worker route → api-client (Cache API check)
   the data layer.
 - `POST /api/refresh` and the `scheduled()` cron handler are **removed**.
 
+### OMM Support — native OMM → satrec (no TLE text round-trip)
+
+The Worker builds the SGP4 propagator (`satrec`) **directly from OMM elements**,
+rather than synthesizing fixed-width TLE text and re-parsing it. This is cleaner
+(no lossy truncation, no checksum/exponent formatting, no Alpha-5 encoding) and
+removes the NORAD > 99,999 limitation outright — `satnum` is an opaque string in
+SGP4 and is never used in the orbital math.
+
+satellite.js 5.0.0 exports only `twoline2satrec` and `sgp4`, but `sgp4init`
+(and `jday`) are reachable via deep CJS import:
+
+```ts
+import sgp4init from "satellite.js/lib/propagation/sgp4init";
+// jday likewise from satellite.js internals, pinned to the installed version
+```
+
+New function `omm2satrec(omm)` mirrors exactly what `twoline2satrec` does before
+its `sgp4init` call, reading numeric fields straight from OMM:
+
+| satrec field | OMM source | conversion |
+|---|---|---|
+| `satnum` | `NORAD_CAT_ID` | string, no length limit |
+| `no` | `MEAN_MOTION` | `÷ (1440 / 2π)` → rad/min |
+| `ecco` | `ECCENTRICITY` | as-is |
+| `inclo` | `INCLINATION` | `× deg2rad` |
+| `nodeo` | `RA_OF_ASC_NODE` | `× deg2rad` |
+| `argpo` | `ARG_OF_PERICENTER` | `× deg2rad` |
+| `mo` | `MEAN_ANOMALY` | `× deg2rad` |
+| `bstar` | `BSTAR` | as-is |
+| `jdsatepoch` | `EPOCH` (ISO) | via satellite.js `jday`; `epoch = jdsatepoch − 2433281.5` |
+
+**Isolation requirement:** the deep import and `sgp4init` call live solely inside
+`omm2satrec`. If the pinned internal path ever breaks, only this one function
+changes (swap to a vendored `sgp4init` port — option C — without touching
+callers). The satellite.js version is pinned in `package.json`.
+
+**Parity:** `omm2satrec` output must produce the same `sgp4` positions as the
+pre-migration `twoline2satrec` path for a known satellite/epoch (see Testing).
+
 ### New module: `cf/src/api-client.ts`
 
 A small typed client. One responsibility: talk to the Orbital Data API and
 cache responses. Interface:
 
 ```ts
-getTle(env, noradId): Promise<TleLines | null>
-getNearestTle(env, noradId, epochDate): Promise<TleLines | null>
+getLatestOmm(env, noradId): Promise<OmmRecord | null>
+getNearestOmm(env, noradId, epochDate): Promise<OmmRecord | null>
 searchCatalog(env, query, limit): Promise<SatelliteSearchResult[]>
 ```
 
-where `TleLines = { name: string; line1: string; line2: string; epoch_utc: string }`.
+The GP functions return the raw `OmmRecord`; callers pass it to `omm2satrec` for
+propagation (and, for `/api/tles/latest`, to `ommToTleLines` for display).
 
 Each function:
-1. Builds the upstream URL.
+1. Builds the upstream URL (`format=json`).
 2. Checks `caches.default` keyed by that URL.
 3. On miss, `fetch`es with header `X-Api-Key: env.ORBITAL_API_KEY`.
 4. Stores the response in the cache with a `Cache-Control: max-age=<ttl>`
    derived from a single **freshness-policy function** (see below).
-5. Parses the TLE/JSON body and returns typed data.
+5. Parses the JSON body and returns typed data.
 
 ### Freshness policy (owner-authored)
 
@@ -138,14 +180,17 @@ in during implementation.
 
 **Changed:**
 - `cf/src/index.ts` — rewrite the 3 data routes to use `api-client`; remove
-  `/api/refresh`, `scheduled()`, and the staleness clamp.
-- `cf/src/types.ts` — update `Env`; trim D1 row types; keep `OmmRecord`,
-  `PredictionConfig`, `PassResult`, `PredictionResult`, `DEFAULT_CONFIG`; add
-  `TleLines`.
-- `cf/src/tle-parse.ts` — shrink; keep only OMM helpers still needed for the
-  `format=tle`-unavailable (NORAD > 99,999) path, if we keep that path.
+  `/api/refresh`, `scheduled()`, and the staleness clamp. Build the propagator
+  via `omm2satrec` for both the latest and nearest paths.
+- `cf/src/types.ts` — update `Env` (drop `DB`, add `ORBITAL_API_KEY`); trim D1
+  row types; keep `OmmRecord`, `PredictionConfig`, `PassResult`,
+  `PredictionResult`, `DEFAULT_CONFIG`.
+- `cf/src/tle-parse.ts` — add `omm2satrec(omm)` (deep-imports `sgp4init`/`jday`);
+  keep `parseOmmRecord`, `epochFromOmm`, and `ommToTleLines` (now only for the
+  backward-compat TLE lines in the `/api/tles/latest` response, NORAD ≤ 99,999).
 - `cf/wrangler.toml` — remove D1 + cron.
-- `cf/package.json` — remove `db:migrate*` and `seed` scripts.
+- `cf/package.json` — remove `db:migrate*` and `seed` scripts; pin `satellite.js`
+  to the installed version (deep import relies on its internal layout).
 
 **Unchanged:** `cf/src/predict.ts`, `cf/src/solar.ts`, `cf/public/index.html`.
 
@@ -154,23 +199,31 @@ in during implementation.
 - Upstream non-200 → map to Worker HTTP status: 404 from API → `404 NORAD not
   found`; 401/403 → `502` with a "data source auth failed" message (do not leak
   the key); other 5xx/network → `502 upstream unavailable`.
-- Missing/empty TLE lines for NORAD > 99,999 (no `format=tle`) → `501 OMM-only
-  records not yet supported` (preserves current behavior).
+- Malformed/incomplete OMM (missing a required element field) → `502 bad upstream
+  data`.
 - `norad_id` missing/invalid → `400` (unchanged).
+
+Note: NORAD > 99,999 is now fully supported for prediction via `omm2satrec`; the
+only degradation for those IDs is the omitted TLE line strings in the
+`/api/tles/latest` response (display-only).
 
 ## Testing
 
 - **Unit:** `api-client` with a mocked `fetch` — URL construction (incl.
   `epoch` param and `X-Api-Key` header), cache hit vs. miss, TLE/JSON parsing,
   and error-status mapping. `cacheTtlSeconds` returns expected buckets.
-- **Prediction parity (guard):** for a known satellite (e.g. ISS 25544) with a
-  fixed TLE, `runPrediction` output is unchanged vs. the pre-migration path —
-  confirms only the *source* of the TLE changed, not the math.
+- **Prediction parity (guard):** for a known satellite (e.g. ISS 25544), the
+  satrec produced by `omm2satrec(omm)` yields the same `sgp4` position/velocity
+  (within float tolerance) as `twoline2satrec(line1, line2)` for the equivalent
+  TLE — confirms the OMM-native path matches the text path, and that
+  `runPrediction` output is unchanged.
+- **High-NORAD:** `omm2satrec` succeeds and propagates for a NORAD > 99,999
+  object (the case that previously returned 501).
 - **Manual/E2E:** `wrangler dev` with `.dev.vars` key set; exercise all three
   routes and confirm Cache API hits on repeat (via `cf-cache-status` or logs).
 
 ## Out of scope
 
-- Propagating OMM-only records (NORAD > 99,999) through `satellite.js` —
-  pre-existing gap, unchanged.
 - Any change to the legacy Python stack or `cf/public/index.html`.
+- Migrating off the deep `sgp4init`/`jday` import to a vendored port (option C) —
+  deferred; the design isolates `omm2satrec` so this is a later localized swap.
