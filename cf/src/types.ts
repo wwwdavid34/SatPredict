@@ -1,5 +1,5 @@
 export interface Env {
-  DB: D1Database;
+  ORBITAL_API_KEY: string;
 }
 
 export interface SatelliteRow {
