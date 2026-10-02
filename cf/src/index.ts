@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { getLatestOmm, getNearestOmm, searchCatalog, ApiError } from "./api-client";
-import { omm2satrec } from "./tle-parse";
+import { omm2satrec, apiOmmToTleLines } from "./tle-parse";
 import { runPrediction, utcOffsetFromLon } from "./predict";
 import { DEFAULT_CONFIG } from "./types";
 import type { Env } from "./types";
@@ -59,6 +59,7 @@ app.get("/api/predict/overpass", async (c) => {
   const response: Record<string, any> = {
     norad_id: noradId,
     name: omm.OBJECT_NAME ?? "",
+    tle: apiOmmToTleLines(omm),
     target: { lat: targetLat, lon: targetLon },
     epoch_utc: omm.EPOCH,
     swath_km: cfg.swathKm,

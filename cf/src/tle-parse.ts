@@ -141,6 +141,59 @@ export function ommToTleLines(omm: OmmRecord): [string, string] | null {
   return [line1, line2];
 }
 
+/**
+ * Synthesize TLE lines directly from the numeric ApiOmm fields returned by
+ * orbital-data-api (no string parsing needed — mirrors `ommToTleLines` field
+ * layout but reads numbers straight through). Returns null when the NORAD ID
+ * doesn't fit the TLE's 5-character catalog-number field.
+ */
+export function apiOmmToTleLines(omm: ApiOmm): { line1: string; line2: string } | null {
+  const noradId = omm.NORAD_CAT_ID;
+  if (noradId > 99999) return null;
+
+  const classification = (omm.CLASSIFICATION_TYPE ?? "U")[0];
+  const intlDesg = (omm.OBJECT_ID ?? "").replace(/-/g, "").padEnd(8).slice(0, 8);
+  const epochStr = tleEpoch(omm.EPOCH);
+  const ndot = omm.MEAN_MOTION_DOT ?? 0;
+  const ndotHalf = ndot / 2.0;
+  const nddot = omm.MEAN_MOTION_DDOT ?? 0;
+  const nddotSixth = nddot / 6.0;
+  const bstar = omm.BSTAR;
+  const ephType = 0; // ApiOmm doesn't carry EPHEMERIS_TYPE; TLEs almost always use 0.
+  const elsetNo = omm.ELEMENT_SET_NO ?? 999;
+
+  // ndot field
+  const ndotSign = ndotHalf < 0 ? "-" : " ";
+  const ndotAbs = Math.abs(ndotHalf);
+  const ndotDigits = ndotAbs.toFixed(8).slice(1); // strip leading "0"
+  const ndotField = `${ndotSign}${ndotDigits}`;
+
+  let line1 =
+    `1 ${String(noradId).padStart(5, "0")}${classification} ${intlDesg} ${epochStr}` +
+    ` ${ndotField} ${tleExpFormat(nddotSixth)} ${tleExpFormat(bstar)}` +
+    ` ${ephType} ${String(elsetNo).padStart(4)}`;
+  line1 = line1.padEnd(68).slice(0, 68);
+  line1 += String(tleChecksum(line1));
+
+  const incl = omm.INCLINATION;
+  const raan = omm.RA_OF_ASC_NODE;
+  const ecc = omm.ECCENTRICITY;
+  const argp = omm.ARG_OF_PERICENTER;
+  const ma = omm.MEAN_ANOMALY;
+  const mm = omm.MEAN_MOTION;
+  const rev = omm.REV_AT_EPOCH ?? 0;
+
+  const eccStr = ecc.toFixed(7).slice(2); // drop "0."
+
+  let line2 =
+    `2 ${String(noradId).padStart(5, "0")} ${incl.toFixed(4).padStart(8)} ${raan.toFixed(4).padStart(8)} ${eccStr}` +
+    ` ${argp.toFixed(4).padStart(8)} ${ma.toFixed(4).padStart(8)} ${mm.toFixed(8).padStart(11)}${String(rev).padStart(5)}`;
+  line2 = line2.padEnd(68).slice(0, 68);
+  line2 += String(tleChecksum(line2));
+
+  return { line1, line2 };
+}
+
 /** OMM record as returned by orbital-data-api (numeric fields, UPPERCASE names). */
 export interface ApiOmm {
   OBJECT_NAME?: string;
